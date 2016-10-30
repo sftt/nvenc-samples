@@ -1,35 +1,40 @@
 Introduction:
 -------------
-This is Release 4.0 of NVENC SDK. This SDK release is backward compatible
-with NVENC SDK 1.0 (released in September 2012), 2.0 (released in March 2013) and 3.0 (released in August 2013). 
+This is release 6.0 of NVIDIA Video Codec SDK, which adds the following major features:
 
-Applications or source projects that use the NVIDIA NVENC Video Encoder API require:
-* Windows: NVIDIA driver version 340.52 or higher (340.xx)
-* Linux: NVIDIA driver from R340 release
-* NVIDIA GPU based on the Kepler and Maxwell architecture
+* H.264 Motion Estimation Only Mode
+* HEVC Adaptive Quantization 
+* Abilitiy for NVEncode API to take RGB surface as inputs for limited color spaces. 
+* Decoding Samples to demonstrate the decoding capabilities on NVIDIA GPUs.
+
+Please refer to .\doc\NVENC_DA-06209-001_v07.pdf and .\doc\NVIDIA_Video_Decoder.pdf to get more details on the encoding and decoding functionalities supported in the current SDK. 
+
+For system, software and build environment requirements, please refer to the file Readme.txt included in the SDK package.
 
 -----------------------------------------------------------------------------
 
 This package contains:
 
-1) nvEncoder Sample application source code 
-   - Note that this sample application supports NVENC 4.0 API.
-2) NVENC - NVIDIA Video Encoder API header 
-   - [.\include\nvEncodeAPI.h]
-3) NVENC - NVIDIA Video Encoder Interface Programming Guide
-   - [.\doc\NVENC_VideoEncoder_API_ProgGuide.pdf] 
-4) NVENC - NVIDIA Kepler Hardware Video Encoder (Application Note)
-   - [.\doc\NVENC_DA-06209-001_v04.pdf]
-5) NVENC - Video Encoder API Reference Manual (CHM)
-   - [.\doc\nvEncodeAPI_v4.0.chm] 
-   - Both of these documents are up to date and is the reference API manual
-   
-------------------------------------------------------------------------------
-Changes and new features in NVENC SDK 4.0 as compared to NVENC SDK 3.0
+1) Sample applications demonstrating various encoding/decoding capabilities. 
 
-1) Support for NV Maxwell class GPUs and Software support for new Hardware features available in the architecture
-2) Adpative Quanatization
-3) Advanced Rate Control
-4) Intra Refresh
-5) Two sessions of NVENC allowed on GeFroce cards (Windows only)
-6) Several bug-fixes
+2) NVENC - NVIDIA Video Codec SDK Samples Guide
+   - [.\Samples\NVIDIA_Video_Codec_SDK_Samples_Guide.pdf]
+
+3) NVENC - NVIDIA Video Encoder API header
+   - [.\Samples\common\inc\nvEncodeAPI.h]
+
+4) NVENC - NVIDIA Video Encoder Application Note
+   - [.\doc\NVENC_DA-06209-001_v07.pdf]
+
+5) NVENC - NVIDIA Video Encoder (NVENC) Interface (Programming Guide)
+   - [.\doc\NVENC_VideoEncoder_API_ProgGuide.pdf]
+
+6) NVENC - NVIDIA Video Encoder API Reference Manual
+   - [.\doc\NvEncodeAPI_v.6.0.pdf]
+   - [.\doc\NvEncodeAPI_v.6.0.chm]
+
+7) NVDEC - NVIDIA Video Decoder (NVCUVID) (Programming Guide)
+   - [.\doc\NVIDIA_Video_Decoder.pdf]
+
+------------------------------------------------------------------------------
+
