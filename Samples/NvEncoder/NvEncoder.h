@@ -120,7 +120,9 @@ protected:
     CUcontext                                            m_cuContext;
     EncodeConfig                                         m_stEncoderInput;
     EncodeBuffer                                         m_stEncodeBuffer[MAX_ENCODE_QUEUE];
+    MotionEstimationBuffer                               m_stMVBuffer[MAX_ENCODE_QUEUE];
     CNvQueue<EncodeBuffer>                               m_EncodeBufferQueue;
+    CNvQueue<MotionEstimationBuffer>                     m_MVBufferQueue;
     EncodeOutputBuffer                                   m_stEOSOutputBfr; 
 
 protected:
@@ -130,10 +132,13 @@ protected:
     NVENCSTATUS                                          InitD3D11(uint32_t deviceID = 0);
     NVENCSTATUS                                          InitD3D10(uint32_t deviceID = 0);
     NVENCSTATUS                                          InitCuda(uint32_t deviceID = 0);
-    NVENCSTATUS                                          AllocateIOBuffers(uint32_t uInputWidth, uint32_t uInputHeight, uint32_t isYuv444);
+    NVENCSTATUS                                          AllocateIOBuffers(uint32_t uInputWidth, uint32_t uInputHeight, NV_ENC_BUFFER_FORMAT inputFormat);
+    NVENCSTATUS                                          AllocateMVIOBuffers(uint32_t uInputWidth, uint32_t uInputHeight, NV_ENC_BUFFER_FORMAT inputFormat);
     NVENCSTATUS                                          ReleaseIOBuffers();
+    NVENCSTATUS                                          ReleaseMVIOBuffers();
     unsigned char*                                       LockInputBuffer(void * hInputSurface, uint32_t *pLockedPitch);
     NVENCSTATUS                                          FlushEncoder();
+    void                                                 FlushMVOutputBuffer();
     NVENCSTATUS                                          RunMotionEstimationOnly(MEOnlyConfig *pMEOnly, bool bFlush);
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2015 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2014 NVIDIA Corporation.  All rights reserved.
  *
  * Please refer to the NVIDIA end user license agreement (EULA) associated
  * with this source code for terms and conditions that govern your use of
@@ -17,19 +17,18 @@
 #include <cstring>
 #include <cassert>
 
-VideoParser::VideoParser(VideoDecoder *pVideoDecoder, FrameQueue *pFrameQueue, CUVIDEOFORMATEX *pFormat, CUcontext *pCudaContext) : hParser_(0)
+VideoParser::VideoParser(VideoDecoder *pVideoDecoder, FrameQueue *pFrameQueue, CUVIDEOFORMATEX *pFormat) : hParser_(0)
 {
     assert(0 != pFrameQueue);
     oParserData_.pFrameQueue   = pFrameQueue;
     assert(0 != pVideoDecoder);
     oParserData_.pVideoDecoder = pVideoDecoder;
-    oParserData_.pContext      = pCudaContext;
 
     CUVIDPARSERPARAMS oVideoParserParameters;
     memset(&oVideoParserParameters, 0, sizeof(CUVIDPARSERPARAMS));
     oVideoParserParameters.CodecType              = pVideoDecoder->codec();
     oVideoParserParameters.ulMaxNumDecodeSurfaces = pVideoDecoder->maxDecodeSurfaces();
-    oVideoParserParameters.ulMaxDisplayDelay      = 1;  // this flag is needed so the parser will push frames out to the decoder as quickly as it can
+    oVideoParserParameters.ulMaxDisplayDelay      = 2;  // this flag is needed so the parser will push frames out to the decoder as quickly as it can
     oVideoParserParameters.pUserData              = &oParserData_;
     oVideoParserParameters.pExtVideoInfo          = pFormat;
     oVideoParserParameters.pfnSequenceCallback    = HandleVideoSequence;    // Called before decoding frames and/or whenever there is a format change
@@ -72,10 +71,7 @@ VideoParser::HandlePictureDecode(void *pUserData, CUVIDPICPARAMS *pPicParams)
     if (!bFrameAvailable)
         return false;
 
-    if (pParserData->pVideoDecoder->decodePicture(pPicParams, pParserData->pContext) != CUDA_SUCCESS)
-    {
-        return false;
-    }
+    pParserData->pVideoDecoder->decodePicture(pPicParams);
 
     return true;
 }

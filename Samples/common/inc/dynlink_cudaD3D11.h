@@ -12,7 +12,9 @@
 #ifndef CUDAD3D11_H
 #define CUDAD3D11_H
 
-#if INIT_CUDA_D3D
+#if INIT_CUDA_D3D11
+
+#include <d3d11.h>
 
 /**
  * CUDA API versioning support
@@ -24,7 +26,9 @@
         #error "Unsupported value of CUDA_FORCE_API_VERSION"
     #endif
 #else
+#ifndef __CUDA_API_VERSION
     #define __CUDA_API_VERSION 3020
+#endif
 #endif /* CUDA_FORCE_API_VERSION */
 
 #if defined(__CUDA_API_VERSION_INTERNAL) || __CUDA_API_VERSION >= 3020
@@ -84,7 +88,8 @@ typedef enum CUd3d11DeviceList_enum {
  * \sa
  * ::cuD3D11GetDevices
  */
-CUresult CUDAAPI cuD3D11GetDevice(CUdevice *pCudaDevice, IDXGIAdapter *pAdapter);
+typedef CUresult CUDAAPI tcuD3D11GetDevice(CUdevice *pCudaDevice, IDXGIAdapter *pAdapter);
+extern tcuD3D11GetDevice *cuD3D11GetDevice;
 
 /**
  * \brief Gets the CUDA devices corresponding to a Direct3D 11 device
@@ -121,7 +126,8 @@ CUresult CUDAAPI cuD3D11GetDevice(CUdevice *pCudaDevice, IDXGIAdapter *pAdapter)
  * \sa
  * ::cuD3D11GetDevice
  */
-CUresult CUDAAPI cuD3D11GetDevices(unsigned int *pCudaDeviceCount, CUdevice *pCudaDevices, unsigned int cudaDeviceCount, ID3D11Device *pD3D11Device, CUd3d11DeviceList deviceList);
+typedef CUresult CUDAAPI tcuD3D11GetDevices(unsigned int *pCudaDeviceCount, CUdevice *pCudaDevices, unsigned int cudaDeviceCount, ID3D11Device *pD3D11Device, CUd3d11DeviceList deviceList);
+extern tcuD3D11GetDevices *cuD3D11GetDevices;
 
 /**
  * \brief Register a Direct3D 11 resource for access by CUDA
@@ -204,7 +210,8 @@ CUresult CUDAAPI cuD3D11GetDevices(unsigned int *pCudaDeviceCount, CUdevice *pCu
  * ::cuGraphicsSubResourceGetMappedArray,
  * ::cuGraphicsResourceGetMappedPointer
  */
-CUresult CUDAAPI cuGraphicsD3D11RegisterResource(CUgraphicsResource *pCudaResource, ID3D11Resource *pD3DResource, unsigned int Flags);
+typedef CUresult CUDAAPI tcuGraphicsD3D11RegisterResource(CUgraphicsResource *pCudaResource, ID3D11Resource *pD3DResource, unsigned int Flags);
+extern tcuGraphicsD3D11RegisterResource *cuGraphicsD3D11RegisterResource;
 
 /**
  * \defgroup CUDA_D3D11_DEPRECATED Direct3D 11 Interoperability [DEPRECATED]
@@ -245,7 +252,10 @@ CUresult CUDAAPI cuGraphicsD3D11RegisterResource(CUgraphicsResource *pCudaResour
  * ::cuD3D11GetDevice,
  * ::cuGraphicsD3D11RegisterResource
  */
-CUresult CUDAAPI cuD3D11CtxCreate(CUcontext *pCtx, CUdevice *pCudaDevice, unsigned int Flags, ID3D11Device *pD3DDevice);
+typedef CUresult CUDAAPI tcuD3D11CtxCreate(CUcontext *pCtx, CUdevice *pCudaDevice, unsigned int Flags, ID3D11Device *pD3DDevice);
+typedef CUresult CUDAAPI tcuD3D11CtxCreate_v2(CUcontext *pCtx, CUdevice *pCudaDevice, unsigned int Flags, ID3D11Device *pD3DDevice);
+
+extern tcuD3D11CtxCreate *cuD3D11CtxCreate;
 
 /**
  * \brief Create a CUDA context for interoperability with Direct3D 11
@@ -277,7 +287,8 @@ CUresult CUDAAPI cuD3D11CtxCreate(CUcontext *pCtx, CUdevice *pCudaDevice, unsign
  * ::cuGraphicsD3D11RegisterResource
  */
 
-CUresult CUDAAPI cuD3D11CtxCreateOnDevice(CUcontext *pCtx, unsigned int flags, ID3D11Device *pD3DDevice, CUdevice cudaDevice);
+typedef CUresult CUDAAPI tcuD3D11CtxCreateOnDevice(CUcontext *pCtx, unsigned int flags, ID3D11Device *pD3DDevice, CUdevice cudaDevice);
+extern tcuD3D11CtxCreateOnDevice *cuD3D11CtxCreateOnDevice;
 
 /**
  * \brief Get the Direct3D 11 device against which the current CUDA context was
@@ -301,7 +312,8 @@ CUresult CUDAAPI cuD3D11CtxCreateOnDevice(CUcontext *pCtx, unsigned int flags, I
  * \sa
  * ::cuD3D11GetDevice
  */
-CUresult CUDAAPI cuD3D11GetDirect3DDevice(ID3D11Device **ppD3DDevice);
+typedef CUresult CUDAAPI tcuD3D11GetDirect3DDevice(ID3D11Device **ppD3DDevice);
+extern tcuD3D11GetDirect3DDevice *cuD3D11GetDirect3DDevice;
 
 #endif /* __CUDA_API_VERSION >= 3020 */
 
@@ -325,8 +337,6 @@ CUresult CUDAAPI cuD3D11CtxCreate(CUcontext *pCtx, CUdevice *pCudaDevice, unsign
 #ifdef __cplusplus
 };
 #endif
-
-#undef __CUDA_API_VERSION
 
 #endif
 

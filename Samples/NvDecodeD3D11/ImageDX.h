@@ -17,8 +17,8 @@
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
 #define WINDOWS_LEAN_AND_MEAN
 #include <windows.h>
+#include <d3d11.h>
 #endif
-#include <d3dx9.h>
 
 const int Format2Bpp[] = { 1, 4, 0 };
 
@@ -32,7 +32,8 @@ class ImageDX
             UNKNOWN_PIXEL_FORMAT
         };
 
-        ImageDX(IDirect3DDevice9 *pDeviceD3D,
+        ImageDX(ID3D11Device *pDeviceD3D, ID3D11DeviceContext *pContext,
+				IDXGISwapChain *pSwapChain,
                 unsigned int nDispWidth, unsigned int nDispHeight,
                 unsigned int nTexWidth,  unsigned int nTexHeight,
                 bool bVsync,
@@ -71,7 +72,7 @@ class ImageDX
         // Note:
         //      This method will fail, if this image is not a registered CUDA resource.
         void
-        map(CUdeviceptr *ppImageData, size_t *pImagePitch, int active_field = 0);
+        map(CUarray *pBackBufferArray, int active_field = 0);
 
         void
         unmap(int active_field = 0);
@@ -99,26 +100,15 @@ class ImageDX
 
     private:
         static
-        D3DFORMAT
+        DXGI_FORMAT
         d3dFormat(PixelFormat ePixelFormat);
 
-
-        struct VertexStruct
-        {
-            VertexStruct() {};
-            VertexStruct(float nX, float nY, float nZ, float nU, float nV);
-            float position[3];
-            float texture[2];
-        };
-
-
-        VertexStruct aVertexBuffer_[4];
-
-        static const unsigned int aIndexBuffer_[6];
-
-        IDirect3DDevice9   *pDeviceD3D_;
-        IDirect3DTexture9 *pTexture_[3];
-        IDirect3DSurface9 *pSurface_[3];
+		ID3D11Device *pDeviceD3D_;
+		ID3D11DeviceContext *pContext_;
+		IDXGISwapChain *pSwapChain_;
+        ID3D11Texture2D *pTexture_[3];
+		ID3D11Texture2D *pBackBuffer;
+        CUgraphicsResource aCudaResource_[3];
 
         unsigned int nWidth_;
         unsigned int nHeight_;

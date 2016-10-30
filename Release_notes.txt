@@ -1,13 +1,29 @@
 Introduction:
 -------------
-This is release 6.0 of NVIDIA Video Codec SDK, which adds the following major features:
+This is release 7.0 of NVIDIA Video Codec SDK, which adds the following major features:
 
-* H.264 Motion Estimation Only Mode
-* HEVC Adaptive Quantization 
-* Abilitiy for NVEncode API to take RGB surface as inputs for limited color spaces. 
-* Decoding Samples to demonstrate the decoding capabilities on NVIDIA GPUs.
+Encode Features 
+-----------------
+1)HEVC Sample Adaptive Offset(SAO) 
+2)HEVC 4:4:4 encoding
+3)HEVC 10-Bit encoding
+4)HEVC Lossless encoding
+5)HEVC Long Term Reference (LTR) Frame support 
+6)HEVC 8K (8192 x 8192) encoding
+7)HEVC Motion Estimation (ME) only Mode  
+8)Look-ahead
+9)Asynchronous H.264 Motion Estimation (ME) only Mode (Synchronous Mode was already supported)
+10)Improved Spatial Adaptive Quantization 
+11)H.264 Temporal Adaptive Quantization 
 
-Please refer to .\doc\NVENC_DA-06209-001_v07.pdf and .\doc\NVIDIA_Video_Decoder.pdf to get more details on the encoding and decoding functionalities supported in the current SDK. 
+Decode Features 
+-----------------
+1)VP9 Decoding 
+2)VP8 Decoding 
+3)HEVC 8K Decoding 
+4)VP9 8K Decoding 
+
+Please refer to .\doc\NVENC_DA-06209-001_v08.pdf and .\doc\NVDEC_DA-06209-001_v08.pdf to get more details about the available encoding and decoding functionalities in the SDK. 
 
 For system, software and build environment requirements, please refer to the file Readme.txt included in the SDK package.
 
@@ -15,26 +31,35 @@ For system, software and build environment requirements, please refer to the fil
 
 This package contains:
 
-1) Sample applications demonstrating various encoding/decoding capabilities. 
 
-2) NVENC - NVIDIA Video Codec SDK Samples Guide
+1) Sample applications demonstrating various encoding/decoding capabilities, in directory .\Samples\
+
+2) NVIDIA Video Codec SDK Samples Guide
    - [.\Samples\NVIDIA_Video_Codec_SDK_Samples_Guide.pdf]
 
-3) NVENC - NVIDIA Video Encoder API header
+3) NVIDIA Video Encoder API header
    - [.\Samples\common\inc\nvEncodeAPI.h]
 
-4) NVENC - NVIDIA Video Encoder Application Note
-   - [.\doc\NVENC_DA-06209-001_v07.pdf]
+4) NVIDIA Video Encoder Application Note
+   - [.\doc\NVENC_DA-06209-001_v08.pdf]
 
-5) NVENC - NVIDIA Video Encoder (NVENC) Interface (Programming Guide)
+5) NVIDIA Video Encoder Programming Guide
    - [.\doc\NVENC_VideoEncoder_API_ProgGuide.pdf]
 
-6) NVENC - NVIDIA Video Encoder API Reference Manual
-   - [.\doc\NvEncodeAPI_v.6.0.pdf]
-   - [.\doc\NvEncodeAPI_v.6.0.chm]
+6) NVIDIA Video Encoder API Reference Manual
+   - [.\doc\NvEncodeAPI_v.7.0.pdf]
+   - [.\doc\NvEncodeAPI_v.7.0.chm]
 
-7) NVDEC - NVIDIA Video Decoder (NVCUVID) (Programming Guide)
-   - [.\doc\NVIDIA_Video_Decoder.pdf]
+7) NVIDIA Video Decoder API header
+   - [.\Samples\common\inc\dynlink_cuviddec.h]
+   - [.\Samples\common\inc\dynlink_nvcuvid.h]
 
+8) NVIDIA Video Decoder Application Note
+   - [.\doc\NVDEC_DA-06209-001_v08.pdf]
+
+9) NVIDIA Video Decoder (NVCUVID) (Programming Guide)
+   - [.\doc\NVDEC_VideoDecoder_API_ProgGuide.pdf]
+
+Please note that the sample applications provided in the package are for demonstration purposes only and may not be fully tuned for Quality and Performance. Hence the users are advised to do their independent evaluation for Quality and/or performance. 
 ------------------------------------------------------------------------------
 

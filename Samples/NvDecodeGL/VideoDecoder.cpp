@@ -54,7 +54,7 @@ VideoDecoder::VideoDecoder(const CUVIDEOFORMAT &rVideoFormat,
 
     printf("\n");
 
-    // Validate video format.  These are the currently supported formats via NVCUVID
+    // Validate video format.  These are the currently supported formats via NVDECODE
     assert(cudaVideoCodec_MPEG1    == rVideoFormat.codec ||
            cudaVideoCodec_MPEG2    == rVideoFormat.codec ||
            cudaVideoCodec_MPEG4    == rVideoFormat.codec ||
@@ -64,6 +64,8 @@ VideoDecoder::VideoDecoder(const CUVIDEOFORMAT &rVideoFormat,
            cudaVideoCodec_H264_SVC == rVideoFormat.codec ||
            cudaVideoCodec_H264_MVC == rVideoFormat.codec ||
            cudaVideoCodec_HEVC     == rVideoFormat.codec ||
+           cudaVideoCodec_VP8      == rVideoFormat.codec ||
+           cudaVideoCodec_VP9      == rVideoFormat.codec ||
            cudaVideoCodec_YUV420   == rVideoFormat.codec ||
            cudaVideoCodec_YV12     == rVideoFormat.codec ||
            cudaVideoCodec_NV12     == rVideoFormat.codec ||
@@ -95,14 +97,23 @@ VideoDecoder::VideoDecoder(const CUVIDEOFORMAT &rVideoFormat,
     oVideoDecodeCreateInfo_.DeinterlaceMode     = cudaVideoDeinterlaceMode_Adaptive;
 
     // No scaling
-    oVideoDecodeCreateInfo_.ulTargetWidth       = oVideoDecodeCreateInfo_.ulWidth;
-    oVideoDecodeCreateInfo_.ulTargetHeight      = oVideoDecodeCreateInfo_.ulHeight;
+    oVideoDecodeCreateInfo_.ulTargetWidth       = rVideoFormat.display_area.right - rVideoFormat.display_area.left;
+    oVideoDecodeCreateInfo_.ulTargetHeight      = rVideoFormat.display_area.bottom - rVideoFormat.display_area.top;
+    oVideoDecodeCreateInfo_.display_area.left   = 0;
+    oVideoDecodeCreateInfo_.display_area.right  = oVideoDecodeCreateInfo_.ulTargetWidth;
+    oVideoDecodeCreateInfo_.display_area.top    = 0;
+    oVideoDecodeCreateInfo_.display_area.bottom = oVideoDecodeCreateInfo_.ulTargetHeight;
+
     oVideoDecodeCreateInfo_.ulNumOutputSurfaces = MAX_FRAME_COUNT;  // We won't simultaneously map more than 8 surfaces
     oVideoDecodeCreateInfo_.ulCreationFlags     = m_VideoCreateFlags;
     oVideoDecodeCreateInfo_.vidLock             = vidCtxLock;
     // create the decoder
     CUresult oResult = cuvidCreateDecoder(&oDecoder_, &oVideoDecodeCreateInfo_);
-    assert(CUDA_SUCCESS == oResult);
+    if (oResult != CUDA_SUCCESS)
+    {
+        printf("cuvidCreateDecoder failed: %d\n", oResult);
+        assert(0);
+    }
 }
 
 VideoDecoder::~VideoDecoder()
@@ -159,30 +170,36 @@ const
     return oVideoDecodeCreateInfo_.ulTargetHeight;
 }
 
-void
+CUresult
 VideoDecoder::decodePicture(CUVIDPICPARAMS *pPictureParameters, CUcontext *pContext)
 {
     // Handle CUDA picture decode (this actually calls the hardware VP/CUDA to decode video frames)
     CUresult oResult = cuvidDecodePicture(oDecoder_, pPictureParameters);
-    assert(CUDA_SUCCESS == oResult);
+    return oResult;
 }
 
-void
+CUresult
 VideoDecoder::mapFrame(int iPictureIndex, CUdeviceptr *ppDevice, unsigned int *pPitch, CUVIDPROCPARAMS *pVideoProcessingParameters)
 {
     CUresult oResult = cuvidMapVideoFrame(oDecoder_,
                                           iPictureIndex,
                                           ppDevice,
                                           pPitch, pVideoProcessingParameters);
-    assert(CUDA_SUCCESS == oResult);
-    assert(0 != *ppDevice);
-    assert(0 != *pPitch);
+    if (ppDevice == NULL)
+    {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    if (*pPitch == 0)
+    {
+        return CUDA_ERROR_INVALID_VALUE;
+    }
+    return oResult;
 }
 
-void
+CUresult
 VideoDecoder::unmapFrame(CUdeviceptr pDevice)
 {
     CUresult oResult = cuvidUnmapVideoFrame(oDecoder_, pDevice);
-    assert(CUDA_SUCCESS == oResult);
+    return oResult;
 }
 

@@ -126,8 +126,8 @@ CNvEncoderD3DInterop::~CNvEncoderD3DInterop()
 NVENCSTATUS CNvEncoderD3DInterop::InitD3D9(unsigned int deviceID)
 {
     HRESULT hr = S_OK;
-    D3DPRESENT_PARAMETERS d3dpp;
-    D3DADAPTER_IDENTIFIER9 adapterId;
+    D3DPRESENT_PARAMETERS d3dpp = {0};
+    D3DADAPTER_IDENTIFIER9 adapterId = {0};
     unsigned int iAdapter = NULL;
 
     Direct3DCreate9Ex(D3D_SDK_VERSION, &m_pD3DEx);
@@ -166,7 +166,7 @@ NVENCSTATUS CNvEncoderD3DInterop::InitD3D9(unsigned int deviceID)
 
     hr = DXVA2CreateVideoService(m_pD3D9Device, IID_PPV_ARGS(&m_pDXVA2VideoProcessServices));
 
-    DXVA2_VideoDesc vd;
+    DXVA2_VideoDesc vd = {0};
     unsigned int uGuidCount = 0;
     GUID *pGuids = NULL;
     bool bVPGuidAvailable = false;

@@ -18,21 +18,19 @@
 #define WINDOWS_LEAN_AND_MEAN
 #include <windows.h>
 #include <windowsx.h>
-#pragma comment(lib, "version.lib")
 #endif
-#include <d3dx9.h>
 
 // CUDA Header includes
 #include "dynlink_nvcuvid.h"  // <nvcuvid.h>
 #include "dynlink_cuda.h"     // <cuda.h>
-#include "dynlink_cudaD3D9.h" // <cudaD3D9.h>
-#include "dynlink_builtin_types.h"      // <builtin_types.h>
+#include "dynlink_cudaD3D11.h" // <cudaD3D11.h>
+#include "dynlink_builtin_types.h"	  // <builtin_types.h>
 
 // CUDA utilities and system includes
 #include "helper_functions.h"
 #include "helper_cuda_drvapi.h"
 
-// cudaDecodeD3D9 related helper functions
+// cudaDecodeD3D11 related helper functions
 #include "FrameQueue.h"
 #include "VideoSource.h"
 #include "VideoParser.h"
@@ -48,9 +46,9 @@
 #include <iostream>
 #include <cassert>
 
-const char *sAppName     = "NVDECODE/D3D9 Video Decoder";
-const char *sAppFilename = "NVDecodeD3D9";
-const char *sSDKname     = "NVDecodeD3D9";
+const char *sAppName     = "NVDECODE/D3D11 Video Decoder";
+const char *sAppFilename = "NVDecodeD3D11";
+const char *sSDKname     = "NVDecodeD3D11";
 
 #define VIDEO_SOURCE_FILE "plush1_720p_10s.m2v"
 
@@ -65,7 +63,6 @@ StopWatchInterface *global_timer = NULL;
 
 int                 g_DeviceID    = 0;
 bool                g_bWindowed   = true;
-bool                g_bDeviceLost = false;
 bool                g_bDone       = false;
 bool                g_bRunning    = false;
 bool                g_bAutoQuit   = false;
@@ -86,8 +83,11 @@ bool                g_bIsProgressive = true; // assume it is progressive, unless
 bool                g_bException  = false;
 bool                g_bWaived     = false;
 int                 g_iRepeatFactor = 1; // 1:1 assumes no frame repeats
-long                g_nFrameStart   = -1;
-long                g_nFrameEnd     = -1;
+long                g_nFrameStart = -1;
+long                g_nFrameEnd = -1;
+
+HWND                g_hWnd = NULL;
+WNDCLASSEX          *g_wc = NULL;
 
 int   *pArgc = NULL;
 char **pArgv = NULL;
@@ -100,11 +100,9 @@ CUvideoctxlock       g_CtxLock = NULL;
 
 float present_fps, decoded_fps, total_time = 0.0f;
 
-D3DDISPLAYMODE        g_d3ddm;
-D3DPRESENT_PARAMETERS g_d3dpp;
-
-IDirect3D9          *g_pD3D; // Used to create the D3DDevice
-IDirect3DDevice9    *g_pD3DDevice;
+ID3D11Device  *g_pD3DDevice;
+ID3D11DeviceContext *g_pContext;
+IDXGISwapChain *g_pSwapChain;
 
 // These are CUDA function pointers to the CUDA kernels
 CUmoduleManager   *g_pCudaModule;
@@ -130,6 +128,8 @@ VideoDecoder  *g_pVideoDecoder = 0;
 
 ImageDX       *g_pImageDX      = 0;
 CUdeviceptr    g_pInteropFrame[3] = { 0, 0, 0 }; // if we're using CUDA malloc
+CUdeviceptr    g_pRgba = 0;
+CUarray        g_backBufferArray = 0;
 
 CUVIDEOFORMAT g_stFormat;
 
@@ -149,9 +149,10 @@ unsigned int g_fpsCount = 0;      // FPS count for averaging
 unsigned int g_fpsLimit = 16;     // FPS limit for sampling timer;
 
 // Forward declarations
-bool    initD3D9(HWND hWnd, int argc, char **argv, int *pbTCC);
-HRESULT initD3D9Surface(unsigned int nWidth, unsigned int nHeight);
+bool    initD3D11(HWND hWnd, int argc, char **argv, int *pbTCC);
+HRESULT initD3D11Surface(unsigned int nWidth, unsigned int nHeight);
 HRESULT freeDestSurface();
+void shutdown();
 
 bool loadVideoSource(const char *video_file,
                      unsigned int &width, unsigned int &height,
@@ -163,6 +164,10 @@ void freeCudaResources(bool bDestroyContext);
 bool copyDecodedFrameToTexture(unsigned int &nRepeats, int bUseInterop, int *pbIsProgressive);
 void cudaPostProcessFrame(CUdeviceptr *ppDecodedFrame, size_t nDecodedPitch,
                           CUdeviceptr *ppTextureData,  size_t nTexturePitch,
+                          CUmodule cuModNV12toARGB,
+                          CUfunction fpCudaKernel, CUstream streamID);
+void cudaPostProcessFrame(CUdeviceptr *ppDecodedFrame, size_t nDecodedPitch,
+                          CUarray array,
                           CUmodule cuModNV12toARGB,
                           CUfunction fpCudaKernel, CUstream streamID);
 HRESULT drawScene(int field_num);
@@ -207,41 +212,6 @@ bool checkHW(char *name, char *gpuType, int dev)
     }
 }
 
-unsigned int GetOSVersion()
-{
-    const char* kernel32 = "kernel32.dll";
-    char path[MAX_PATH];
-    UINT n = GetSystemDirectory(path, MAX_PATH);
-    if (n > MAX_PATH - strlen(kernel32)) {
-        return 0xffffffff;
-    }
-    sprintf_s(path, "%s\\%s", path, kernel32);
-    DWORD versionSize = GetFileVersionInfoSize(path, NULL);
-    if (!versionSize) {
-        return 0xffffffff;
-    }
-
-    BYTE* version = new BYTE[versionSize];
-    BOOL ret = GetFileVersionInfo(path, 0, versionSize, (void*)version);
-    if (!ret) {
-        delete[] version;
-        return 0xffffffff;
-    }
-
-    BYTE* buffer = NULL;
-    UINT bufferSize = 0;
-    ret = VerQueryValue(version, "\\", (void**)&buffer, &bufferSize);
-    if (!ret || bufferSize < sizeof(VS_FIXEDFILEINFO)) {
-        delete[] version;
-        return 0xffffffff;
-    }
-
-    VS_FIXEDFILEINFO *vinfo = (VS_FIXEDFILEINFO*)buffer;
-    int verOS = HIWORD(vinfo->dwProductVersionMS);
-    delete[] version;        
-    return verOS;
-}
-
 void printStatistics()
 {
     int   hh, mm, ss, msec;
@@ -280,25 +250,6 @@ void computeFPS(HWND hWnd, bool bUseInterop)
 
     char sFPS[256];
     std::string sDecodeStatus;
-
-    if (g_bDeviceLost)
-    {
-        sDecodeStatus = "DeviceLost!\0";
-        sprintf(sFPS, "%s [%s] - [%s %d]",
-                sAppName, sDecodeStatus.c_str(),
-                (g_bIsProgressive ? "Frame" : "Field"),
-                g_DecodeFrameCount);
-
-        if (bUseInterop && (!g_bQAReadback))
-        {
-            SetWindowText(hWnd, sFPS);
-            UpdateWindow(hWnd);
-        }
-
-        sdkResetTimer(&frame_timer);
-        g_fpsCount = 0;
-        return;
-    }
 
     if (g_pFrameQueue->isEndOfDecode() && g_pFrameQueue->isEmpty())
     {
@@ -410,11 +361,11 @@ HRESULT initCudaResources(int argc, char **argv, int bUseInterop, int bTCC)
     checkCudaErrors(cuDeviceTotalMem(&totalGlobalMem, g_oDevice));
     printf("  Total amount of global memory:     %4.4f MB\n", (float)totalGlobalMem/(1024*1024));
 
-    // Create CUDA Device w/ D3D9 interop (if WDDM), otherwise CUDA w/o interop (if TCC)
+    // Create CUDA Device w/ D3D11 interop (if WDDM), otherwise CUDA w/o interop (if TCC)
     // (use CU_CTX_BLOCKING_SYNC for better CPU synchronization)
     if (bUseInterop)
     {
-        checkCudaErrors(cuD3D9CtxCreate(&g_oContext, &g_oDevice, CU_CTX_BLOCKING_SYNC, g_pD3DDevice));
+        checkCudaErrors(cuD3D11CtxCreate(&g_oContext, &g_oDevice, CU_CTX_BLOCKING_SYNC, g_pD3DDevice));
     }
     else
     {
@@ -450,8 +401,9 @@ HRESULT initCudaResources(int argc, char **argv, int bUseInterop, int bTCC)
 
     if (bUseInterop)
     {
-        initD3D9Surface(g_pVideoDecoder->targetWidth(),
+        initD3D11Surface(g_pVideoDecoder->targetWidth(),
                         g_pVideoDecoder->targetHeight());
+		checkCudaErrors(cuMemAlloc(&g_pRgba, g_pVideoDecoder->targetWidth() * g_pVideoDecoder->targetHeight() * 4));
     }
     else
     {
@@ -484,7 +436,7 @@ HRESULT reinitCudaResources()
 
     /////////////////Change///////////////////////////
     initCudaVideo();
-    initD3D9Surface(g_pVideoDecoder->targetWidth(),
+    initD3D11Surface(g_pVideoDecoder->targetWidth(),
                     g_pVideoDecoder->targetHeight());
     /////////////////////////////////////////
 
@@ -495,11 +447,12 @@ void displayHelp()
 {
     printf("\n");
     printf("%s - Help\n\n", sAppName);
-    printf("  %s [parameters] [video_file]\n\n", sAppFilename);
+    printf("  %s [parameters] -i=source.264 -o=output.yuv\n\n", sAppFilename);
     printf("Program parameters:\n");
     printf("\t-i=source.264   - input file for decoding\n");
     printf("\t-o=output.yuv   - specify base Input file for YUV output\n");
     printf("\t-psnr=ref.yuv   - compare PSNR against reference YUV\n");
+    printf("\t-pass=<threshold> - PSNR threshold for PASS/FAIL test\n");
     printf("\t-decodecuda     - Use CUDA kernels for MPEG-2 (Available with 64+ CUDA cores)\n");
     printf("\t-decodedxva     - Use NVDEC for MPEG-2, VC-1, H.264, or H.265 decode\n");
     printf("\t-decodecuvid    - Use NVDEC for MPEG-2, VC-1, H.264, or H.265 decode\n");
@@ -509,6 +462,7 @@ void displayHelp()
     printf("\t-repeatfactor=n - Force repeat every frame n times.\n");
     printf("\t-updateall      - always update CSC matrices.\n");
     printf("\t-displayvideo   - display video frames on the window\n");
+    printf("\t-nodisplay      - do not open a window for display\n");
     printf("\t-nointerop      - create the CUDA context w/o using graphics interop\n");
     printf("\t-readback       - enable readback of frames to system memory\n");
     printf("\t-device=n       - choose a specific GPU device to decode video with\n");
@@ -619,11 +573,17 @@ void parseCommandLineArguments(int argc, char *argv[])
         g_bUseInterop = true;
     }
 
-    if (checkCmdLineFlag(argc, (const char **)argv, "nointerop"))
-    {
-        g_bUseInterop = false;
-        printf("NVDECODE/DirectX graphics interop disabled\n");
-    }
+	if (checkCmdLineFlag(argc, (const char **)argv, "nointerop"))
+	{
+		g_bUseInterop = false;
+		printf("NVDECODE/DirectX graphics interop disabled\n");
+	}
+
+	if (checkCmdLineFlag(argc, (const char **)argv, "nodisplay"))
+	{
+		g_bUseDisplay = false;
+		printf("Video Window Display disabled\n");
+	}
 
     if (checkCmdLineFlag(argc, (const char **)argv, "readback"))
     {
@@ -636,6 +596,7 @@ void parseCommandLineArguments(int argc, char *argv[])
         g_bUseDisplay = true;
         g_bUseInterop = true;
     }
+
     if (checkCmdLineFlag(argc, (const char **)argv, "nframestart"))
     {
         g_nFrameStart = getCmdLineArgumentInt(argc, (const char **)argv, "nframestart");
@@ -643,7 +604,7 @@ void parseCommandLineArguments(int argc, char *argv[])
     }
     if (checkCmdLineFlag(argc, (const char **)argv, "nframeend"))
     {
-        g_nFrameEnd = getCmdLineArgumentInt(argc, (const char **)argv, "nframeend");
+        g_nFrameEnd   = getCmdLineArgumentInt(argc, (const char **)argv, "nframeend");
         printf("YUV output @ nStartEnd = %d\n", g_nFrameEnd);
     }
 
@@ -657,12 +618,13 @@ void parseCommandLineArguments(int argc, char *argv[])
     {
         g_bAutoQuit = true;
     }
+
     if (bUseDefaultInputFile)
     {
         strcpy(video_file, sdkFindFilePath(VIDEO_SOURCE_FILE, argv[0]));
     }
 
-    // Now verify the video file is legit
+    // Now verify the input video file is legit
     FILE *fp = NULL;
     FOPEN(fp, video_file, "r");
     if (video_file == NULL && fp == NULL)
@@ -673,6 +635,7 @@ void parseCommandLineArguments(int argc, char *argv[])
 
     if (fp)
     {
+        printf("[%s]: input file:  [%s]\n", sAppFilename, video_file);
         fclose(fp);
     }
 
@@ -700,8 +663,6 @@ void parseCommandLineArguments(int argc, char *argv[])
 
     // store the current path so we can reinit the CUDA context
     strcpy(exec_path, argv[0]);
-
-    printf("[%s]: input file:  [%s]\n", sAppFilename, video_file);
 }
 
 void SaveFrameAsYUV(unsigned char *pdst,
@@ -714,9 +675,9 @@ void SaveFrameAsYUV(unsigned char *pdst,
     const unsigned char *py = psrc;
     const unsigned char *puv = psrc + height*pitch;
 
-    if (((long)g_DecodeFrameCount >= g_nFrameStart) &&
-        ((long)g_DecodeFrameCount <= g_nFrameEnd)
-        )
+    if ( ((long)g_DecodeFrameCount >= g_nFrameStart) && 
+         ((long)g_DecodeFrameCount <= g_nFrameEnd)
+       )
     {
 //      printf(" Saving YUV Frame %d (start,end)=(%d,%d)\n", g_DecodeFrameCount, g_nFrameStart, g_nFrameEnd);
         printf("%d+", g_DecodeFrameCount);
@@ -724,7 +685,7 @@ void SaveFrameAsYUV(unsigned char *pdst,
     else if ((g_nFrameStart == -1) && (g_nFrameEnd == -1))
     {
         printf("+");
-    }
+    } 
     else // we do nothing and exit
     {
         return;
@@ -738,19 +699,19 @@ void SaveFrameAsYUV(unsigned char *pdst,
     }
 
     // De-interleave chroma
-    width_2 = width >> 1;
+    width_2  = width >> 1;
     height_2 = height >> 1;
     for (y = 0; y<height_2; y++)
     {
         for (x = 0; x<width_2; x++)
         {
-            pdst[xy_offset + y*(width_2)+x] = puv[x * 2];
-            pdst[xy_offset + uvoffs + y*(width_2)+x] = puv[x * 2 + 1];
+            pdst[ xy_offset          + y*(width_2) + x ] = puv[x * 2];
+            pdst[ xy_offset + uvoffs + y*(width_2) + x ] = puv[x * 2 + 1];
         }
         puv += pitch;
     }
 
-    fwrite(pdst, 1, width*height + (width*height) / 2, fpWriteYUV);
+    fwrite(pdst, 1, width*height+(width*height)/2, fpWriteYUV);
 }
 
 int main(int argc, char *argv[])
@@ -773,12 +734,12 @@ int main(int argc, char *argv[])
                       sAppName, NULL
                     };
     RegisterClassEx(&wc);
+	g_wc = &wc;
 
     // figure out the window size we must create to get a *client* area
     // that is of the size requested by m_dimensions.
     RECT adjustedWindowSize;
     DWORD dwWindowStyle;
-    HWND hWnd = NULL;
 
     // Initialize the CUDA and NVDECODE
     typedef HMODULE CUDADRIVER;
@@ -792,7 +753,8 @@ int main(int argc, char *argv[])
                                        g_nVideoWidth, g_nVideoHeight,
                                        g_nWindowWidth, g_nWindowHeight);
 
-
+	// Create the Windows
+	if (g_bUseDisplay)
     {
         dwWindowStyle = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
         SetRect(&adjustedWindowSize, 0, 0, g_nVideoWidth  , g_nVideoHeight);
@@ -802,7 +764,7 @@ int main(int argc, char *argv[])
         g_nWindowHeight = adjustedWindowSize.bottom - adjustedWindowSize.top;
 
         // Create the application's window
-        hWnd = CreateWindow(wc.lpszClassName, sAppName,
+        g_hWnd = CreateWindow(wc.lpszClassName, sAppName,
                             dwWindowStyle,
                             0, 0,
                             g_nWindowWidth,
@@ -816,11 +778,11 @@ int main(int argc, char *argv[])
     if (g_bUseInterop)
     {
         // Initialize Direct3D
-        if (initD3D9(hWnd, argc, argv, &bTCC) == false)
+        if (initD3D11(g_hWnd, argc, argv, &bTCC) == false)
         {
             g_bAutoQuit = true;
             g_bWaived   = true;
-            goto ExitApp;
+			shutdown();
         }
     }
 
@@ -836,13 +798,13 @@ int main(int argc, char *argv[])
         g_bUseInterop = false;
     }
 
-    // Initialize CUDA/D3D9 context and other video memory resources
+    // Initialize CUDA/D3D11 context and other video memory resources
     if (initCudaResources(argc, argv, g_bUseInterop, bTCC) == E_FAIL)
     {
         g_bAutoQuit  = true;
         g_bException = true;
         g_bWaived    = true;
-        goto ExitApp;
+		shutdown();
     }
 
     g_pVideoSource->start();
@@ -850,8 +812,8 @@ int main(int argc, char *argv[])
 
     if (!g_bQAReadback && !bTCC)
     {
-        ShowWindow(hWnd, SW_SHOWDEFAULT);
-        UpdateWindow(hWnd);
+        ShowWindow(g_hWnd, SW_SHOWDEFAULT);
+        UpdateWindow(g_hWnd);
     }
 
     // the main loop
@@ -864,7 +826,7 @@ int main(int argc, char *argv[])
         // On this case we drive the display with a while loop (no openGL calls)
         while (!g_bDone)
         {
-            renderVideoFrame(hWnd, g_bUseInterop);
+            renderVideoFrame(g_hWnd, g_bUseInterop);
         }
     }
     else
@@ -884,7 +846,7 @@ int main(int argc, char *argv[])
                 }
                 else
                 {
-                    renderVideoFrame(hWnd, g_bUseInterop);
+                    renderVideoFrame(g_hWnd, g_bUseInterop);
                 }
 
                 if (g_bAutoQuit && g_bDone)
@@ -914,45 +876,59 @@ int main(int argc, char *argv[])
 
     printStatistics();
 
-    // clean up CUDA and D3D resources
-ExitApp:
-    // clean up CUDA and OpenGL resources
-    cleanup(g_bWaived ? false : true);
+	g_bWaived = false;
+	shutdown();
+}
 
-    if (!g_bQAReadback)
-    {
-        // Unregister windows class
-        UnregisterClass(wc.lpszClassName, wc.hInstance);
-    }
+void shutdown()
+{
+	// clean up CUDA and OpenGL resources
+	cleanup(g_bWaived ? false : true);
 
-    if (g_bAutoQuit)
-    {
-        PostQuitMessage(0);
-    }
+	if (!g_bQAReadback)
+	{
+		// Unregister windows class
+		UnregisterClass(g_wc->lpszClassName, g_wc->hInstance);
+	}
 
-    if (hWnd)
-    {
-        DestroyWindow(hWnd);
-    }
+	if (g_bAutoQuit)
+	{
+		PostQuitMessage(0);
+	}
 
-    if (g_bWaived)
-    {
-        exit(EXIT_WAIVED);
-    }
-    else
-    {
-        exit(g_bException ? EXIT_FAILURE : EXIT_SUCCESS);
-    }
+	if (g_hWnd)
+	{
+		DestroyWindow(g_hWnd);
+	}
+
+	if (g_bWaived)
+	{
+		exit(EXIT_WAIVED);
+	}
+	else
+	{
+		exit(g_bException ? EXIT_FAILURE : EXIT_SUCCESS);
+	}
+}
+
+inline std::string wcs2mbstring(const wchar_t *wcs)
+{
+	size_t len = wcslen(wcs) + 1;
+	char *mbs = new char[len];
+	wcstombs(mbs, wcs, len);
+
+	std::string mbstring(mbs);
+	delete mbs;
+	return mbstring;
 }
 
 // Initialize Direct3D
 bool
-initD3D9(HWND hWnd, int argc, char **argv, int *pbTCC)
+initD3D11(HWND hWnd, int argc, char **argv, int *pbTCC)
 {
     int dev, device_count = 0;
     bool bSpecifyDevice=false;
     char device_name[256];
-    bool bWin10OrAbove = (GetOSVersion() >= 10);
 
     // Check for a min spec of Compute 1.1 capability before running
     checkCudaErrors(cuDeviceGetCount(&device_count));
@@ -1030,40 +1006,23 @@ initD3D9(HWND hWnd, int argc, char **argv, int *pbTCC)
 
     if (g_bUseInterop)
     {
-        // Create the D3D object.
-        if (!bWin10OrAbove) {
-            g_pD3D = Direct3DCreate9(D3D_SDK_VERSION);
-            eResult = (g_pD3D ? S_OK : E_FAIL);
-        }
-        else {
-            eResult = Direct3DCreate9Ex(D3D_SDK_VERSION, (IDirect3D9Ex**)&g_pD3D);
-        }
 
-        if (eResult != S_OK)
-        {
-            return false;
-        }
-
-        // Get primary display identifier
-        D3DADAPTER_IDENTIFIER9 adapterId;
-        bool bDeviceFound = false;
+		bool bDeviceFound = false;
         int device;
 
         // Find the first CUDA capable device
         CUresult cuStatus;
-
-        for (unsigned int g_iAdapter = 0; g_iAdapter < g_pD3D->GetAdapterCount(); g_iAdapter++)
+		IDXGIAdapter *pAdapter = NULL;
+		IDXGIFactory1 *pFactory = NULL;
+		CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void **)&pFactory);
+        for (unsigned int g_iAdapter = 0; pFactory->EnumAdapters(g_iAdapter, &pAdapter) == S_OK; g_iAdapter++)
         {
-            HRESULT hr = g_pD3D->GetAdapterIdentifier(g_iAdapter, 0, &adapterId);
+			DXGI_ADAPTER_DESC desc;
+			pAdapter->GetDesc(&desc);
 
-            if (FAILED(hr))
-            {
-                continue;
-            }
-
-            cuStatus = cuD3D9GetDevice(&device, adapterId.DeviceName);
-            printf("> Display Device: \"%s\" %s Direct3D9\n",
-                   adapterId.Description,
+            cuStatus = cuD3D11GetDevice(&device, pAdapter);
+            printf("> Display Device: \"%s\" %s Direct3D11\n",
+                   wcs2mbstring(desc.Description).c_str(),
                    (cuStatus == cudaSuccess) ? "supports" : "does not support");
 
             if (cudaSuccess == cuStatus)
@@ -1072,6 +1031,7 @@ initD3D9(HWND hWnd, int argc, char **argv, int *pbTCC)
                 break;
             }
         }
+		pFactory->Release();
 
         // we check to make sure we have found a cuda-compatible D3D device to work on
         if (!bDeviceFound)
@@ -1079,43 +1039,30 @@ initD3D9(HWND hWnd, int argc, char **argv, int *pbTCC)
             printf("\n");
             printf("  No CUDA-compatible Direct3D9 device available\n");
             // destroy the D3D device
-            g_pD3D->Release();
-            g_pD3D = NULL;
             return false;
         }
 
         // Create the D3D Display Device
-        RECT                  rc;
-        GetClientRect(hWnd, &rc);
-        g_pD3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &g_d3ddm);
-        ZeroMemory(&g_d3dpp, sizeof(g_d3dpp));
+		/* Initialize D3D */
+		DXGI_SWAP_CHAIN_DESC sc = { 0 };
+		sc.BufferCount = 1;
+		sc.BufferDesc.Width = g_nVideoWidth;
+		sc.BufferDesc.Height = g_nVideoHeight;
+		sc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+		sc.BufferDesc.RefreshRate.Numerator = 0;
+		sc.BufferDesc.RefreshRate.Denominator = 1;
+		sc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+		sc.OutputWindow = hWnd;
+		sc.SampleDesc.Count = 1;
+		sc.SampleDesc.Quality = 0;
+		sc.Windowed = TRUE;
 
-        g_d3dpp.Windowed               = (g_bQAReadback ? TRUE : g_bWindowed); // fullscreen or windowed?
-
-        g_d3dpp.BackBufferCount        = 1;
-        g_d3dpp.SwapEffect             = D3DSWAPEFFECT_DISCARD;
-        g_d3dpp.hDeviceWindow          = hWnd;
-        g_d3dpp.BackBufferWidth        = rc.right  - rc.left;
-        g_d3dpp.BackBufferHeight       = rc.bottom - rc.top;
-        g_d3dpp.BackBufferFormat       = g_d3ddm.Format;
-        g_d3dpp.FullScreen_RefreshRateInHz = 0; // set to 60 for fullscreen, and also don't forget to set Windowed to FALSE
-        g_d3dpp.PresentationInterval   = (g_bUseVsync ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE);
-
-        if (g_bQAReadback)
-        {
-            g_d3dpp.Flags              = D3DPRESENTFLAG_VIDEO;    // turn off vsync
-        }
-
-        if (!bWin10OrAbove) {
-            eResult = g_pD3D->CreateDevice(0, D3DDEVTYPE_HAL, hWnd,
-                D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_MULTITHREADED,
-                &g_d3dpp, &g_pD3DDevice);
-        }
-        else {
-            eResult = ((IDirect3D9Ex*)g_pD3D)->CreateDeviceEx(0, D3DDEVTYPE_HAL, hWnd,
-                D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_MULTITHREADED,
-                &g_d3dpp, NULL, (IDirect3DDevice9Ex**)&g_pD3DDevice);
-        }
+		HRESULT hr = D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE,
+			NULL, 0, NULL, 0, D3D11_SDK_VERSION, &sc, &g_pSwapChain, &g_pD3DDevice, NULL, &g_pContext);
+		if (FAILED(hr)) {
+			printf("Unable to create DX11 device and swapchain, hr=0x%x", hr);
+			return false;
+		}
     }
     else
     {
@@ -1128,9 +1075,9 @@ initD3D9(HWND hWnd, int argc, char **argv, int *pbTCC)
 
 // Initialize Direct3D Textures (allocation and initialization)
 HRESULT
-initD3D9Surface(unsigned int nWidth, unsigned int nHeight)
+initD3D11Surface(unsigned int nWidth, unsigned int nHeight)
 {
-    g_pImageDX = new ImageDX(g_pD3DDevice,
+    g_pImageDX = new ImageDX(g_pD3DDevice, g_pContext, g_pSwapChain,
                              nWidth, nHeight,
                              nWidth, nHeight,
                              g_bUseVsync,
@@ -1161,12 +1108,23 @@ loadVideoSource(const char *video_file,
                 unsigned int &width    , unsigned int &height,
                 unsigned int &dispWidth, unsigned int &dispHeight)
 {
-    std::auto_ptr<FrameQueue> apFrameQueue(new FrameQueue);
-    std::auto_ptr<VideoSource> apVideoSource(new VideoSource(video_file, apFrameQueue.get()));
+	VideoSource *pSource = NULL;
+	std::auto_ptr<FrameQueue> apFrameQueue(new FrameQueue);
+	try
+	{
+		pSource = new VideoSource(video_file, apFrameQueue.get());
+	}
+	catch (CUresult val)
+	{
+		printf("VideoSource returned an error (Video Codec is not supported), exiting...\n", val);
+		g_bWaived = true;
+		shutdown();
+	}
+	std::auto_ptr<VideoSource> apVideoSource(pSource);
 
     // retrieve the video source (width,height)
-    apVideoSource->getSourceDimensions(width, height);
-    apVideoSource->getSourceDimensions(dispWidth, dispHeight);
+    apVideoSource->getDisplayDimensions(width, height);
+    apVideoSource->getDisplayDimensions(dispWidth, dispHeight);
 
     memset(&g_stFormat, 0, sizeof(CUVIDEOFORMAT));
     std::cout << (g_stFormat = apVideoSource->format()) << std::endl;
@@ -1273,7 +1231,7 @@ freeCudaResources(bool bDestroyContext)
     }     
 }
 
-// Run the Cuda part of the computation
+// Run the Cuda part of the computation (if g_pFrameQueue is empty, then return false)
 bool copyDecodedFrameToTexture(unsigned int &nRepeats, int bUseInterop, int *pbIsProgressive)
 {
     CUVIDPARSERDISPINFO oDisplayInfo;
@@ -1312,16 +1270,7 @@ bool copyDecodedFrameToTexture(unsigned int &nRepeats, int bUseInterop, int *pbI
             oVideoProcessingParameters.second_field = active_field;
 
             // map decoded video frame to CUDA surfae
-            if (g_pVideoDecoder->mapFrame(oDisplayInfo.picture_index, &pDecodedFrame[active_field], &nDecodedPitch, &oVideoProcessingParameters) != CUDA_SUCCESS)
-            {
-                // release the frame, so it can be re-used in decoder
-                g_pFrameQueue->releaseFrame(&oDisplayInfo);
-                
-                // Detach from the Current thread
-                checkCudaErrors(cuCtxPopCurrent(NULL));
-                
-                return false;
-            }
+            g_pVideoDecoder->mapFrame(oDisplayInfo.picture_index, &pDecodedFrame[active_field], &nDecodedPitch, &oVideoProcessingParameters);
             nWidth  = g_pVideoDecoder->targetWidth();
             nHeight = g_pVideoDecoder->targetHeight();
             // map DirectX texture to CUDA surface
@@ -1368,23 +1317,17 @@ bool copyDecodedFrameToTexture(unsigned int &nRepeats, int bUseInterop, int *pbI
             if (g_pImageDX)
             {
                 // map the texture surface
-                g_pImageDX->map(&pInteropFrame[active_field], &nTexturePitch, active_field);
+                g_pImageDX->map(&g_backBufferArray, active_field);
+				cudaPostProcessFrame(&pDecodedFrame[active_field], nDecodedPitch, g_backBufferArray, g_pCudaModule->getModule(), g_kernelNV12toARGB, g_KernelSID);
+                // unmap the texture surface
+                g_pImageDX->unmap(active_field);
             }
             else
             {
                 pInteropFrame[active_field] = g_pInteropFrame[active_field];
                 nTexturePitch = g_pVideoDecoder->targetWidth() * 2;
-            }
-
-            // perform post processing on the CUDA surface (performs colors space conversion and post processing)
-            // comment this out if we inclue the line of code seen above
-            cudaPostProcessFrame(&pDecodedFrame[active_field], nDecodedPitch, &pInteropFrame[active_field], 
-                                 nTexturePitch, g_pCudaModule->getModule(), g_kernelNV12toARGB, g_KernelSID);
-
-            if (g_pImageDX)
-            {
-                // unmap the texture surface
-                g_pImageDX->unmap(active_field);
+				cudaPostProcessFrame(&pDecodedFrame[active_field], nDecodedPitch, &pInteropFrame[active_field], 
+									 nTexturePitch, g_pCudaModule->getModule(), g_kernelNV12toARGB, g_KernelSID);
             }
 
             // unmap video frame
@@ -1392,9 +1335,48 @@ bool copyDecodedFrameToTexture(unsigned int &nRepeats, int bUseInterop, int *pbI
             g_pVideoDecoder->unmapFrame(pDecodedFrame[active_field]);                  
             g_DecodeFrameCount++;
 
+/*          if (g_bPSNR)
+            {
+                int w2 = nWidth;
+                int h2 = nHeight;
+                int luma_size = w2*h2;
+                int chroma_size = w2*(h2 >> 1);
+
+                unsigned char *iyuv = new unsigned char[w2*(h2 + (h2 >> 1)) + 16];
+
+//                NV12toIYUV(pRawNV12, pRawNV12 + state.dci.ulTargetHeight*pitch, iyuv, w2, h2, pitch);
+
+                unsigned char *iyuv_ref = new unsigned char[w2*(h2 + (h2 >> 1)) + 16];
+                long long frm_mse_y = 0, frm_mse_uv = 0;
+
+                if (fread(iyuv_ref, w2, h2 + (h2 >> 1), fpRefYUV) > 0)
+                {
+                    double psnr;
+
+                    frm_mse_y = SumSquareError(iyuv, iyuv_ref, luma_size);
+                    frm_mse_uv = SumSquareError(iyuv + luma_size, iyuv_ref + luma_size, chroma_size);
+                    mse_luma += frm_mse_y;
+                    mse_chroma += frm_mse_uv;
+                    mse_luma_count += luma_size;
+                    mse_chroma_count += chroma_size;
+                    psnr = PSNR(frm_mse_y + frm_mse_uv, luma_size + chroma_size);
+                    if ((psnr_threshold) && (psnr < (double)psnr_threshold))
+                    {
+                        printf("  [%d(%d)] PSNR=%6.3fdB (Y=%6.3fdB, UV=%6.3fdB) [size=%d]\n", pic_cnt,
+                            state.frmStats[PicIdx].pic_num_in_decode_order,
+                            psnr, PSNR(frm_mse_y, luma_size), PSNR(frm_mse_uv, chroma_size),
+                            state.frmStats[PicIdx].bytes_in_picture);
+                        fflush(stdout);
+                    }
+                }
+                delete iyuv_ref;
+            }
+            delete iyuv;
+*/
+
             if (g_bWriteFile)
             {
-                checkCudaErrors(cuStreamSynchronize(g_ReadbackSID));
+                cuStreamSynchronize(g_ReadbackSID);
                 SaveFrameAsYUV(g_pFrameYUV[active_field + 3],
                     g_pFrameYUV[active_field],
                     nWidth, nHeight, nDecodedPitch);
@@ -1487,96 +1469,65 @@ cudaPostProcessFrame(CUdeviceptr *ppDecodedFrame, size_t nDecodedPitch,
                                       nWidth, nHeight, fpCudaKernel, streamID);
 }
 
+// This is the CUDA stage for Video Post Processing.  Last stage takes care of the NV12 to ARGB
+void
+cudaPostProcessFrame(CUdeviceptr *ppDecodedFrame, size_t nDecodedPitch,
+                     CUarray array,
+                     CUmodule cuModNV12toARGB,
+                     CUfunction fpCudaKernel, CUstream streamID)
+{
+    uint32 nWidth  = g_pVideoDecoder->targetWidth();
+    uint32 nHeight = g_pVideoDecoder->targetHeight();
+
+    // Upload the Color Space Conversion Matrices
+    if (g_bUpdateCSC)
+    {
+        // CCIR 601/709
+        float hueColorSpaceMat[9];
+        setColorSpaceMatrix(g_eColorSpace,    hueColorSpaceMat, g_nHue);
+        updateConstantMemory_drvapi(cuModNV12toARGB, hueColorSpaceMat);
+
+        if (!g_bUpdateAll)
+        {
+            g_bUpdateCSC = false;
+        }
+    }
+
+    // TODO: Stage for handling video post processing
+
+    // Final Stage: NV12toARGB color space conversion
+    CUresult eResult;
+    eResult = cudaLaunchNV12toARGBDrv(*ppDecodedFrame, nDecodedPitch,
+                                      g_pRgba, nWidth * 4,
+                                      nWidth, nHeight, fpCudaKernel, streamID);
+
+	CUDA_MEMCPY2D memcpy2D = { 0 };
+	memcpy2D.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+	memcpy2D.srcDevice = g_pRgba;
+	memcpy2D.srcPitch = nWidth * 4;
+	memcpy2D.dstMemoryType = CU_MEMORYTYPE_ARRAY;
+	memcpy2D.dstArray = array;
+	memcpy2D.dstPitch = nWidth * 4;
+	memcpy2D.WidthInBytes = nWidth * 4;
+	memcpy2D.Height = nHeight;
+
+	// clear the surface to solid white
+	checkCudaErrors(cuMemcpy2D(&memcpy2D));
+}
+
 // Draw the final result on the screen
 HRESULT drawScene(int field_num)
 {
     HRESULT hr = S_OK;
 
-    // Begin code to handle case where the D3D gets lost
-    if (g_bDeviceLost)
+    // init the scene
+    if (g_bUseDisplay)
     {
-        // test the cooperative level to see if it's okay
-        // to render
-        if (FAILED(hr = g_pD3DDevice->TestCooperativeLevel()))
-        {
-            fprintf(stderr, "TestCooperativeLevel = %08x failed, will attempt to reset\n", hr);
-
-            // if the device was truly lost, (i.e., a fullscreen device just lost focus), wait
-            // until we get it back
-
-            if (hr == D3DERR_DEVICELOST)
-            {
-                fprintf(stderr, "TestCooperativeLevel = %08x DeviceLost, will retry next call\n", hr);
-                return S_OK;
-            }
-
-            // eventually, we will get this return value,
-            // indicating that we can now reset the device
-            if (hr == D3DERR_DEVICENOTRESET)
-            {
-                fprintf(stderr, "TestCooperativeLevel = %08x will try to RESET the device\n", hr);
-                // if we are windowed, read the desktop mode and use the same format for
-                // the back buffer; this effectively turns off color conversion
-
-                if (g_bWindowed)
-                {
-                    g_pD3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &g_d3ddm);
-                    g_d3dpp.BackBufferFormat = g_d3ddm.Format;
-                }
-
-                // now try to reset the device
-                if (FAILED(hr = g_pD3DDevice->Reset(&g_d3dpp)))
-                {
-                    fprintf(stderr, "TestCooperativeLevel = %08x RESET device FAILED\n", hr);
-                    return hr;
-                }
-                else
-                {
-                    fprintf(stderr, "TestCooperativeLevel = %08x RESET device SUCCESS!\n", hr);
-                    // Reinit All other resources including CUDA contexts
-                    initCudaResources(0, NULL, true, false);
-                    fprintf(stderr, "TestCooperativeLevel = %08x INIT device SUCCESS!\n", hr);
-
-                    // we have acquired the device
-                    g_bDeviceLost = false;
-                }
-            }
-        }
+        // render image
+        g_pImageDX->render(field_num);
     }
 
-    // Normal D3D9 rendering code
-    if (!g_bDeviceLost)
-    {
-
-        // init the scene
-        if (g_bUseDisplay)
-        {
-            g_pD3DDevice->BeginScene();
-            g_pD3DDevice->Clear(0, NULL, D3DCLEAR_TARGET, 0, 1.0f, 0);
-            // render image
-            g_pImageDX->render(field_num);
-            // end the scene
-            g_pD3DDevice->EndScene();
-        }
-
-        hr = g_pD3DDevice->Present(NULL, NULL, NULL, NULL);
-
-        if (hr == D3DERR_DEVICELOST)
-        {
-            fprintf(stderr, "drawScene Present = %08x detected D3D DeviceLost\n", hr);
-            g_bDeviceLost = true;
-
-            // We check for DeviceLost, if that happens we want to release resources
-            g_pFrameQueue->endDecode();
-            g_pVideoSource->stop();
-
-            freeCudaResources(false);
-        }
-    }
-    else
-    {
-        fprintf(stderr, "drawScene (DeviceLost == TRUE), waiting\n");
-    }
+    hr = g_pSwapChain->Present(g_bUseVsync ? DXGI_SWAP_EFFECT_SEQUENTIAL : DXGI_SWAP_EFFECT_DISCARD, 0);
 
     return S_OK;
 }
@@ -1589,6 +1540,13 @@ HRESULT cleanup(bool bDestroyContext)
         fflush(fpWriteYUV);
         fclose(fpWriteYUV);
         fpWriteYUV = NULL;
+    }
+
+    if (fpRefYUV != NULL)
+    {
+        fflush(fpRefYUV);
+        fclose(fpRefYUV);
+        fpRefYUV = NULL;
     }
 
     if (bDestroyContext)
@@ -1611,6 +1569,10 @@ HRESULT cleanup(bool bDestroyContext)
             checkCudaErrors(cuMemFree(g_pInteropFrame[2]));
         }
 
+		if (g_pRgba) {
+			checkCudaErrors(cuMemFree(g_pRgba));
+		}
+
         // Detach from the Current thread
         checkCudaErrors(cuCtxPopCurrent(NULL));
     }
@@ -1630,6 +1592,16 @@ HRESULT cleanup(bool bDestroyContext)
         g_pD3DDevice = NULL;
     }
 
+	if (g_pContext) {
+		g_pContext->Release();
+		g_pContext = NULL;
+	}
+
+	if (g_pSwapChain) {
+		g_pSwapChain->Release();
+		g_pSwapChain = NULL;
+	}
+
     return S_OK;
 }
 
@@ -1644,7 +1616,7 @@ void renderVideoFrame(HWND hWnd, bool bUseInterop)
     if (0 != g_pFrameQueue)
     {
         // if not running, we simply don't copy new frames from the decoder
-        if (!g_bDeviceLost && g_bRunning)
+        if (g_bRunning)
         {
             bFramesDecoded = copyDecodedFrameToTexture(nRepeatFrame, true, &bIsProgressive);
         }
@@ -1670,7 +1642,7 @@ void renderVideoFrame(HWND hWnd, bool bUseInterop)
                 }
 
                 bFPSComputed = 1;
-            }             
+            }
         }
 
         // Pass the Windows handle to show Frame Rate on the window title
@@ -1715,30 +1687,6 @@ static LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
 
             break;
-
-            // resize the window
-            // even though we disable resizing (see next event handler below)
-            // we need to be able to handle this event properly because the
-            // windowing system calls it.
-        case WM_SIZE:
-            {
-                D3DMATRIX oViewMatrix = { 1.0f, 0.0f, 0.0f, 0.0f,
-                    0.0f, 1.0f, 0.0f, 0.0f,
-                    0.0f, 0.0f, 1.0f, 0.0f,
-                    0.0f, 0.0f, 0.0f, 1.0f
-                };
-                oViewMatrix._41 = -1.0f / GET_X_LPARAM(lParam); //  clientWidth = GET_X_LPARAM(lParam)
-                oViewMatrix._42 =  1.0f / GET_Y_LPARAM(lParam); //  clientHeight = GET_Y_LPARAM(lParam)
-
-                if (0 != g_pD3DDevice)
-                {
-                    g_pD3DDevice->SetTransform(D3DTS_VIEW, &oViewMatrix);
-                }
-
-                renderVideoFrame(hWnd, g_bUseInterop);
-
-                return 0;   // Jump Back
-            }
 
         case WM_DESTROY:
             g_bDone = true;

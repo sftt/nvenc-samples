@@ -23,6 +23,9 @@
 #if INIT_CUDA_D3D9
 #include "../inc/dynlink_cudaD3D9.h"
 #endif
+#if INIT_CUDA_D3D11
+#include "../inc/dynlink_cudaD3D11.h"
+#endif
 
 tcuInit                               *_cuInit;
 tcuDriverGetVersion                   *cuDriverGetVersion;
@@ -203,6 +206,15 @@ tcuMemHostGetFlags                    *cuMemHostGetFlags;
     tcuD3D9CtxCreate                      *cuD3D9CtxCreate_v2;
     tcuGraphicsD3D9RegisterResource       *cuGraphicsD3D9RegisterResource;
     tcuGraphicsD3D9RegisterResource       *cuGraphicsD3D9RegisterResource_v2;
+#endif
+
+#ifdef INIT_CUDA_D3D11
+	tcuD3D11GetDevice *cuD3D11GetDevice;
+	tcuD3D11GetDevices *cuD3D11GetDevices;
+	tcuGraphicsD3D11RegisterResource *cuGraphicsD3D11RegisterResource;
+	tcuD3D11CtxCreate *cuD3D11CtxCreate;
+	tcuD3D11CtxCreateOnDevice *cuD3D11CtxCreateOnDevice;
+	tcuD3D11GetDirect3DDevice *cuD3D11GetDirect3DDevice;
 #endif
 
 #define STRINGIFY(X) #X

@@ -121,7 +121,7 @@ void CudaDecoder::InitVideoDecoder(const char* videoPath, CUvideoctxlock ctxLock
         exit(-1);
     }
 
-	CUVIDDECODECREATEINFO oVideoDecodeCreateInfo;
+    CUVIDDECODECREATEINFO oVideoDecodeCreateInfo;
     memset(&oVideoDecodeCreateInfo, 0, sizeof(CUVIDDECODECREATEINFO));
     oVideoDecodeCreateInfo.CodecType = oFormat.codec;
     oVideoDecodeCreateInfo.ulWidth   = oFormat.coded_width;
@@ -141,13 +141,17 @@ void CudaDecoder::InitVideoDecoder(const char* videoPath, CUvideoctxlock ctxLock
     oVideoDecodeCreateInfo.DeinterlaceMode = cudaVideoDeinterlaceMode_Weave;
 
     if (targetWidth <= 0 || targetHeight <= 0) {
-        oVideoDecodeCreateInfo.ulTargetWidth  = oVideoDecodeCreateInfo.ulWidth;
-        oVideoDecodeCreateInfo.ulTargetHeight = oVideoDecodeCreateInfo.ulHeight;
+        oVideoDecodeCreateInfo.ulTargetWidth  = oFormat.display_area.right - oFormat.display_area.left;
+        oVideoDecodeCreateInfo.ulTargetHeight = oFormat.display_area.bottom - oFormat.display_area.top;
     }
     else {
         oVideoDecodeCreateInfo.ulTargetWidth  = targetWidth;
         oVideoDecodeCreateInfo.ulTargetHeight = targetHeight;
     }
+    oVideoDecodeCreateInfo.display_area.left   = 0;
+    oVideoDecodeCreateInfo.display_area.right  = oVideoDecodeCreateInfo.ulTargetWidth;
+    oVideoDecodeCreateInfo.display_area.top    = 0;
+    oVideoDecodeCreateInfo.display_area.bottom = oVideoDecodeCreateInfo.ulTargetHeight;
 
     oVideoDecodeCreateInfo.ulNumOutputSurfaces = 2;
     oVideoDecodeCreateInfo.ulCreationFlags = cudaVideoCreate_PreferCUVID;
@@ -199,8 +203,8 @@ void CudaDecoder::GetCodecParam(int* width, int* height, int* frame_rate_num, in
     CUVIDEOFORMAT oFormat;
     cuvidGetSourceVideoFormat(m_videoSource, &oFormat, 0);
 
-    *width  = oFormat.coded_width;
-    *height = oFormat.coded_height;
+    *width  = oFormat.display_area.right - oFormat.display_area.left;
+    *height = oFormat.display_area.bottom - oFormat.display_area.top;
     *frame_rate_num = oFormat.frame_rate.numerator;
     *frame_rate_den = oFormat.frame_rate.denominator;
     *is_progressive = oFormat.progressive_sequence;

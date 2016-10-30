@@ -41,7 +41,7 @@ class VideoParser
         //          is used in the parser-callbacks to decode video-frames.
         //      pFrameQueue - pointer to a valid FrameQueue object. The FrameQueue is used
         //          by  the parser-callbacks to store decoded frames in it.
-        VideoParser(VideoDecoder *pVideoDecoder, FrameQueue *pFrameQueue, CUcontext *pCudaContext = NULL);
+        VideoParser(VideoDecoder *pVideoDecoder, FrameQueue *pFrameQueue, CUVIDEOFORMATEX *pFormat, CUcontext *pCudaContext = NULL);
 
     private:
         // Struct containing user-data to be passed by parser-callbacks.

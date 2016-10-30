@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Express 2013 for Windows Desktop
+# Visual Studio 2013
 VisualStudioVersion = 12.0.31101.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvEncoder", "NvEncoder\NvEncoder_2013.vcxproj", "{ACA66694-3EFB-4A86-8FF1-44A672AF9267}"
@@ -15,9 +15,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvEncoderPerf", "NvEncoderP
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvTranscoder", "NvTranscoder\NvTranscoder_2013.vcxproj", "{B014B2FC-8061-486A-83CC-87A89CFDB460}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NVDecodeD3D9", "NVDecodeD3D9\NVDecodeD3D9_2013.vcxproj", "{EAB14BE9-69C4-6DF1-81C2-2A90F19CC73F}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvDecodeD3D9", "NVDecodeD3D9\NVDecodeD3D9_2013.vcxproj", "{EAB14BE9-69C4-6DF1-81C2-2A90F19CC73F}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NVDecodeGL", "NVDecodeGL\NVDecodeGL_2013.vcxproj", "{5D74260A-B080-8ACC-D732-0198382069B7}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvDecodeD3D11", "NvDecodeD3D11\NvDecodeD3D11_2013.vcxproj", "{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvDecodeGL", "NVDecodeGL\NVDecodeGL_2013.vcxproj", "{5D74260A-B080-8ACC-D732-0198382069B7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -91,6 +93,14 @@ Global
 		{5D74260A-B080-8ACC-D732-0198382069B7}.Release|Win32.Build.0 = Release|Win32
 		{5D74260A-B080-8ACC-D732-0198382069B7}.Release|x64.ActiveCfg = Release|x64
 		{5D74260A-B080-8ACC-D732-0198382069B7}.Release|x64.Build.0 = Release|x64
+		{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}.Debug|Win32.ActiveCfg = Debug|Win32
+		{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}.Debug|Win32.Build.0 = Debug|Win32
+		{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}.Debug|x64.ActiveCfg = Debug|x64
+		{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}.Debug|x64.Build.0 = Debug|x64
+		{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}.Release|Win32.ActiveCfg = Release|Win32
+		{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}.Release|Win32.Build.0 = Release|Win32
+		{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}.Release|x64.ActiveCfg = Release|x64
+		{4921E325-11D5-4C01-AFD1-DBB9EBC924D4}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

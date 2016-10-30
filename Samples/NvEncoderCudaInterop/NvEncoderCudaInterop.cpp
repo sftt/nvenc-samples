@@ -116,14 +116,14 @@ NVENCSTATUS CNvEncoderCudaInterop::InitCuda(unsigned int deviceID, const char *e
     int jitRegCount = 32;
     jitOptVals[2] = (void *)(size_t)jitRegCount;
 
-	string ptx_source;
-	char *ptx_path = sdkFindFilePath(PTX_FILE, exec_path);
-	if (ptx_path == NULL) {
+    string ptx_source;
+    char *ptx_path = sdkFindFilePath(PTX_FILE, exec_path);
+    if (ptx_path == NULL) {
         PRINTERR("Unable to find ptx file path %s\n", PTX_FILE);
-		return NV_ENC_ERR_INVALID_PARAM;
-	}
-	
-	FILE *fp = fopen(ptx_path, "rb");
+        return NV_ENC_ERR_INVALID_PARAM;
+    }
+    
+    FILE *fp = fopen(ptx_path, "rb");
     if (!fp)
     {
         PRINTERR("Unable to read ptx file %s\n", PTX_FILE);
@@ -188,24 +188,26 @@ NVENCSTATUS CNvEncoderCudaInterop::AllocateIOBuffers(uint32_t uInputWidth, uint3
             return nvStatus;
         m_stEncodeBuffer[i].stOutputBfr.dwBitstreamBufferSize = BITSTREAM_BUFFER_SIZE;
 
-#if defined(NV_WINDOWS)
-        nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        if (nvStatus != NV_ENC_SUCCESS)
-            return nvStatus;
-        m_stEncodeBuffer[i].stOutputBfr.bWaitOnEvent = true;
-#else
-        m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {
+            nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            if (nvStatus != NV_ENC_SUCCESS)
+                return nvStatus;
+            m_stEncodeBuffer[i].stOutputBfr.bWaitOnEvent = true;
+        }
+        else
+            m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
     }
 
     m_stEOSOutputBfr.bEOSFlag = TRUE;
-#if defined(NV_WINDOWS)
-    nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEOSOutputBfr.hOutputEvent);
-    if (nvStatus != NV_ENC_SUCCESS)
-        return nvStatus;
-#else
-    m_stEOSOutputBfr.hOutputEvent = NULL;
-#endif
+    if (m_stEncoderInput.enableAsyncMode)
+    {
+        nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEOSOutputBfr.hOutputEvent);
+        if (nvStatus != NV_ENC_SUCCESS)
+            return nvStatus;
+    }
+    else
+        m_stEOSOutputBfr.hOutputEvent = NULL;
 
     return NV_ENC_SUCCESS;
 }
@@ -229,20 +231,22 @@ NVENCSTATUS CNvEncoderCudaInterop::ReleaseIOBuffers()
         m_pNvHWEncoder->NvEncDestroyBitstreamBuffer(m_stEncodeBuffer[i].stOutputBfr.hBitstreamBuffer);
         m_stEncodeBuffer[i].stOutputBfr.hBitstreamBuffer = NULL;
 
-#if defined(NV_WINDOWS)
-        m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        nvCloseFile(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {
+            m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            nvCloseFile(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
+        }
     }
 
     if (m_stEOSOutputBfr.hOutputEvent)
     {
-#if defined(NV_WINDOWS)
-        m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEOSOutputBfr.hOutputEvent);
-        nvCloseFile(m_stEOSOutputBfr.hOutputEvent);
-        m_stEOSOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {
+            m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEOSOutputBfr.hOutputEvent);
+            nvCloseFile(m_stEOSOutputBfr.hOutputEvent);
+            m_stEOSOutputBfr.hOutputEvent = NULL;
+        }
     }
 
     return NV_ENC_SUCCESS;
@@ -270,10 +274,13 @@ NVENCSTATUS CNvEncoderCudaInterop::FlushEncoder()
         }
     }
 #if defined(NV_WINDOWS)
-    if (WaitForSingleObject(m_stEOSOutputBfr.hOutputEvent, 500) != WAIT_OBJECT_0)
+    if (m_stEncoderInput.enableAsyncMode)
     {
-        assert(0);
-        nvStatus = NV_ENC_ERR_GENERIC;
+        if (WaitForSingleObject(m_stEOSOutputBfr.hOutputEvent, 500) != WAIT_OBJECT_0)
+        {
+            assert(0);
+            nvStatus = NV_ENC_ERR_GENERIC;
+        }
     }
 #endif
     return nvStatus;
@@ -501,6 +508,7 @@ int CNvEncoderCudaInterop::EncodeMain(int argc, char *argv[])
         return 1;
 
     m_uEncodeBufferCount = encodeConfig.numB + 4;
+    m_stEncoderInput.enableAsyncMode = encodeConfig.enableAsyncMode;
 
     nvStatus = AllocateIOBuffers(encodeConfig.width, encodeConfig.height);
     if (nvStatus != NV_ENC_SUCCESS)

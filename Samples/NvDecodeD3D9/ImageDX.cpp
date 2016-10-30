@@ -23,22 +23,22 @@ const unsigned int ImageDX::aIndexBuffer_[6] = {0, 1, 2, 0, 2, 3};
 ImageDX::ImageDX(IDirect3DDevice9 *pDeviceD3D,
                  unsigned int nDispWidth, unsigned int nDispHeight,
                  unsigned int nTexWidth,  unsigned int nTexHeight,
-                 bool bIsProgressive,
+                 bool bVsync,
                  PixelFormat ePixelFormat) :
     pDeviceD3D_(pDeviceD3D)
     , nWidth_(nDispWidth)
     , nHeight_(nDispHeight)
     , nTexWidth_(nTexWidth)
     , nTexHeight_(nTexHeight)
-    , bIsProgressive_(bIsProgressive)
+    , bVsync_(bVsync)
     , bIsCudaResource_(false)
 {
     assert(0 != pDeviceD3D_);
 
-    int nFrames = bIsProgressive_ ? 1 : 2;
+    int nFrames = bVsync_ ? 3 : 1;
 
-    pTexture_[0] = pTexture_[1] = 0;
-    pSurface_[0] = pSurface_[1] = 0;
+    pTexture_[0] = pTexture_[1] = pTexture_[2] = 0;
+    pSurface_[0] = pSurface_[1] = pSurface_[2] = 0;
 
     for (int field_num = 0; field_num < nFrames; field_num++)
     {
@@ -60,7 +60,7 @@ ImageDX::ImageDX(IDirect3DDevice9 *pDeviceD3D,
 
 ImageDX::~ImageDX()
 {
-    int nFrames = bIsProgressive_ ? 1 : 2;
+    int nFrames = bVsync_ ? 3 : 1;
 
     for (int field_num=0; field_num < nFrames; field_num++)
     {
@@ -117,7 +117,7 @@ const
 void
 ImageDX::map(CUdeviceptr *ppImageData, size_t *pImagePitch, int active_field)
 {
-    int nFrames = bIsProgressive_ ? 1 : 2;
+    int nFrames = bVsync_ ? 3 : 1;
 
     checkCudaErrors(cuD3D9MapResources(nFrames, reinterpret_cast<IDirect3DResource9 **>(pTexture_)));
     checkCudaErrors(cuD3D9ResourceGetMappedPointer(ppImageData, pTexture_[active_field], 0, 0));
@@ -129,7 +129,7 @@ ImageDX::map(CUdeviceptr *ppImageData, size_t *pImagePitch, int active_field)
 void
 ImageDX::unmap(int active_field)
 {
-    int nFrames = bIsProgressive_ ? 1 : 2;
+    int nFrames = bVsync_ ? 3 : 1;
 
     checkCudaErrors(cuD3D9UnmapResources(nFrames, reinterpret_cast<IDirect3DResource9 **>(&pTexture_)));
 }
@@ -140,7 +140,7 @@ ImageDX::clear(unsigned char nClearColor)
     // Can only be cleared if surface is a CUDA resource
     assert(bIsCudaResource_);
 
-    int nFrames = bIsProgressive_ ? 1 : 2;
+    int nFrames = bVsync_ ? 3 : 1;
     CUdeviceptr  pData = 0;
     size_t       nSize = 0;
 

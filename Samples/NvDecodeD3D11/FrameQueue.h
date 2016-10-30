@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2015 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2014 NVIDIA Corporation.  All rights reserved.
  *
  * Please refer to the NVIDIA end user license agreement (EULA) associated
  * with this source code for terms and conditions that govern your use of
@@ -13,12 +13,13 @@
 
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
 #include <windows.h>
+#define sleep(x) Sleep(x)
+
 #else
 #include <unistd.h>
 #include <string.h>
 typedef unsigned int CRITICAL_SECTION;
 typedef unsigned int HANDLE;
-#define Sleep(x) usleep(1000*x)
 #endif
 
 class FrameQueue

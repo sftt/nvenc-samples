@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2015 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2014 NVIDIA Corporation.  All rights reserved.
  *
  * Please refer to the NVIDIA end user license agreement (EULA) associated
  * with this source code for terms and conditions that govern your use of
@@ -109,7 +109,7 @@ FrameQueue::enqueue(const CUVIDPARSERDISPINFO *pPicParams)
         if (bPlacedFrame) // Done
             break;
 
-        Sleep(1);   // Wait a bit
+        sleep(1);   // Wait a bit
     }
     while (!bEndOfDecode_);
 
@@ -180,7 +180,7 @@ FrameQueue::waitUntilFrameAvailable(int nPictureIndex)
 {
     while (isInUse(nPictureIndex))
     {
-        Sleep(1);   // Decoder is getting too far ahead from display
+        sleep(1);   // Decoder is getting too far ahead from display
 
         if (isEndOfDecode())
             return false;

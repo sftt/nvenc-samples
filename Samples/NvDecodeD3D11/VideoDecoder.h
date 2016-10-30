@@ -60,13 +60,13 @@ class VideoDecoder
         targetHeight()
         const;
 
-        CUresult
+        void
         decodePicture(CUVIDPICPARAMS *pPictureParameters, CUcontext *pContext = NULL);
 
-        CUresult
+        void
         mapFrame(int iPictureIndex, CUdeviceptr *ppDevice, unsigned int *nPitch, CUVIDPROCPARAMS *pVideoProcessingParameters);
 
-        CUresult
+        void
         unmapFrame(CUdeviceptr pDevice);
 
     private:

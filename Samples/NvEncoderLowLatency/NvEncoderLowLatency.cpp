@@ -164,13 +164,13 @@ NVENCSTATUS CNvEncoderLowLatency::InitCuda(uint32_t deviceID, const char *exec_p
     int jitRegCount = 32;
     jitOptVals[2] = (void *)(size_t)jitRegCount;
 
-	string ptx_source;
-	char *ptx_path = sdkFindFilePath(PTX_FILE, exec_path);
-	if (ptx_path == NULL) {
-		PRINTERR("Unable to find ptx file path %s\n", PTX_FILE);
-		return NV_ENC_ERR_INVALID_PARAM;
-	}
-	FILE *fp = fopen(ptx_path, "rb");
+    string ptx_source;
+    char *ptx_path = sdkFindFilePath(PTX_FILE, exec_path);
+    if (ptx_path == NULL) {
+        PRINTERR("Unable to find ptx file path %s\n", PTX_FILE);
+        return NV_ENC_ERR_INVALID_PARAM;
+    }
+    FILE *fp = fopen(ptx_path, "rb");
     if (!fp)
     {
         PRINTERR("Unable to read ptx file %s\n", PTX_FILE);
@@ -240,24 +240,27 @@ NVENCSTATUS CNvEncoderLowLatency::AllocateIOBuffers(uint32_t uInputWidth, uint32
             return nvStatus;
         m_stEncodeBuffer[i].stOutputBfr.dwBitstreamBufferSize = 0xc000;
 
-#if defined(NV_WINDOWS)
-        m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        if (nvStatus != NV_ENC_SUCCESS)
-            return nvStatus;
-        m_stEncodeBuffer[i].stOutputBfr.bWaitOnEvent = true;
-#else
-        m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {
+            m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            if (nvStatus != NV_ENC_SUCCESS)
+                return nvStatus;
+            m_stEncodeBuffer[i].stOutputBfr.bWaitOnEvent = true;
+        }
+        else
+            m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
+
     }
 
     m_stEOSOutputBfr.bEOSFlag = TRUE;
-#if defined(NV_WINDOWS)
-    nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEOSOutputBfr.hOutputEvent);
-    if (nvStatus != NV_ENC_SUCCESS)
-        return nvStatus;
-#else
-    m_stEOSOutputBfr.hOutputEvent = NULL;
-#endif
+    if (m_stEncoderInput.enableAsyncMode)
+    {
+        nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEOSOutputBfr.hOutputEvent);
+        if (nvStatus != NV_ENC_SUCCESS)
+            return nvStatus;
+    }
+    else
+        m_stEOSOutputBfr.hOutputEvent = NULL;
 
     return nvStatus;
 }
@@ -286,24 +289,26 @@ NVENCSTATUS CNvEncoderLowLatency::ReleaseIOBuffers()
             return nvStatus;
         m_stEncodeBuffer[i].stOutputBfr.hBitstreamBuffer = NULL;
 
-#if defined(NV_WINDOWS)
-        nvStatus = m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        if (nvStatus != NV_ENC_SUCCESS)
-            return nvStatus;
-        nvCloseFile(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {
+            nvStatus = m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            if (nvStatus != NV_ENC_SUCCESS)
+                return nvStatus;
+            nvCloseFile(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
+        }
     }
 
     if (m_stEOSOutputBfr.hOutputEvent)
     {
-#if defined(NV_WINDOWS)
-        nvStatus = m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEOSOutputBfr.hOutputEvent);
-        if (nvStatus != NV_ENC_SUCCESS)
-            return nvStatus;
-        nvCloseFile(m_stEOSOutputBfr.hOutputEvent);
-        m_stEOSOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {
+            nvStatus = m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEOSOutputBfr.hOutputEvent);
+            if (nvStatus != NV_ENC_SUCCESS)
+                return nvStatus;
+            nvCloseFile(m_stEOSOutputBfr.hOutputEvent);
+            m_stEOSOutputBfr.hOutputEvent = NULL;
+        }
     }
 
     return NV_ENC_SUCCESS;
@@ -331,10 +336,13 @@ NVENCSTATUS CNvEncoderLowLatency::FlushEncoder()
         }
     }
 #if defined(NV_WINDOWS)
-    if (WaitForSingleObject(m_stEOSOutputBfr.hOutputEvent, 500) != WAIT_OBJECT_0)
+    if (m_stEncoderInput.enableAsyncMode)
     {
-        assert(0);
-        nvStatus = NV_ENC_ERR_GENERIC;
+        if (WaitForSingleObject(m_stEOSOutputBfr.hOutputEvent, 500) != WAIT_OBJECT_0)
+        {
+            assert(0);
+            nvStatus = NV_ENC_ERR_GENERIC;
+        }
     }
 #endif
     return nvStatus;
@@ -569,6 +577,7 @@ int CNvEncoderLowLatency::EncodeMain(int argc, char *argv[])
         bError = true;
         goto exit;
     }
+    m_stEncoderInput.enableAsyncMode = encodeConfig.enableAsyncMode;
     m_uEncodeBufferCount = 3;
     nvStatus = AllocateIOBuffers(m_pNvHWEncoder->m_uMaxWidth, m_pNvHWEncoder->m_uMaxHeight);
     if (nvStatus != NV_ENC_SUCCESS)

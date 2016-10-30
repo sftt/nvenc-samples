@@ -70,6 +70,66 @@ void CNvEncoderPerf::ConvertYUVpitchToYUV444(unsigned char *yuv_luma, unsigned c
     m_pNvHWEncoder->NvEncUnlockInputBuffer(m_stEncodeBuffer[index].stInputBfr.hInputSurface);
 }
 
+void CNvEncoderPerf::ConvertYUV10pitchtoP010PL(unsigned short *yuv_luma, unsigned short *yuv_cb, unsigned short *yuv_cr, int width, int height, int index)
+{
+    uint32_t dstStride;
+    unsigned short *nv12_luma;
+
+    m_pNvHWEncoder->NvEncLockInputBuffer(m_stEncodeBuffer[index].stInputBfr.hInputSurface, (void**)&nv12_luma, &dstStride);
+    if (dstStride == 0)
+        dstStride = width;
+
+    unsigned short *nv12_chroma = (unsigned short *)((unsigned char *)nv12_luma + (m_stEncodeBuffer[index].stInputBfr.dwHeight*dstStride));
+
+    int x, y;
+
+    for (y = 0; y < height; y++)
+    {
+        for (x = 0; x < width; x++)
+        {
+            nv12_luma[(y*dstStride / 2) + x] = yuv_luma[(width*y) + x] << 6;
+        }
+    }
+
+    for (y = 0; y < height / 2; y++)
+    {
+        for (x = 0; x < width; x = x + 2)
+        {
+            nv12_chroma[(y*dstStride / 2) + x] = yuv_cb[((width / 2)*y) + (x >> 1)] << 6;
+            nv12_chroma[(y*dstStride / 2) + (x + 1)] = yuv_cr[((width / 2)*y) + (x >> 1)] << 6;
+        }
+    }
+
+    m_pNvHWEncoder->NvEncUnlockInputBuffer(m_stEncodeBuffer[index].stInputBfr.hInputSurface);
+}
+
+void CNvEncoderPerf::ConvertYUV10pitchtoYUV444(unsigned short *yuv_luma, unsigned short *yuv_cb, unsigned short *yuv_cr, int width, int height, int index)
+{
+    uint32_t dstStride;
+    unsigned short *surf_luma;
+
+    m_pNvHWEncoder->NvEncLockInputBuffer(m_stEncodeBuffer[index].stInputBfr.hInputSurface, (void**)&surf_luma, &dstStride);
+    if (dstStride == 0)
+        dstStride = width;
+
+    unsigned short *surf_cb = (unsigned short *)((unsigned char *)surf_luma + (m_stEncodeBuffer[index].stInputBfr.dwHeight*dstStride));
+    unsigned short *surf_cr = (unsigned short *)((unsigned char *)surf_cb + (m_stEncodeBuffer[index].stInputBfr.dwHeight*dstStride));
+
+    int x, y;
+
+    for (y = 0; y < height; y++)
+    {
+        for (x = 0; x < width; x++)
+        {
+            surf_luma[(y*dstStride / 2) + x] = yuv_luma[(width*y) + x] << 6;
+            surf_cb[(y*dstStride / 2) + x] = yuv_cb[(width*y) + x] << 6;
+            surf_cr[(y*dstStride / 2) + x] = yuv_cr[(width*y) + x] << 6;
+        }
+    }
+
+    m_pNvHWEncoder->NvEncUnlockInputBuffer(m_stEncodeBuffer[index].stInputBfr.hInputSurface);
+}
+
 CNvEncoderPerf::CNvEncoderPerf()
 {
     m_pNvHWEncoder = new CNvHWEncoder;
@@ -287,23 +347,20 @@ NVENCSTATUS CNvEncoderPerf::InitD3D11(uint32_t deviceID)
 }
 #endif
 
-NVENCSTATUS CNvEncoderPerf::AllocateIOBuffers(uint32_t uInputWidth, uint32_t uInputHeight, int isYuv444)
+NVENCSTATUS CNvEncoderPerf::AllocateIOBuffers(uint32_t uInputWidth, uint32_t uInputHeight, NV_ENC_BUFFER_FORMAT inputFormat)
 {
     NVENCSTATUS nvStatus = NV_ENC_SUCCESS;
 
     m_EncodeBufferQueue.Initialize(m_stEncodeBuffer, m_uEncodeBufferCount);
     for (uint32_t i = 0; i < m_uEncodeBufferCount; i++)
     {
-        nvStatus = m_pNvHWEncoder->NvEncCreateInputBuffer(uInputWidth, uInputHeight, &m_stEncodeBuffer[i].stInputBfr.hInputSurface, isYuv444);
+        nvStatus = m_pNvHWEncoder->NvEncCreateInputBuffer(uInputWidth, uInputHeight, &m_stEncodeBuffer[i].stInputBfr.hInputSurface, inputFormat);
         if (nvStatus != NV_ENC_SUCCESS)
         {
             PRINTERR("Failed to allocate Input Buffer, Please reduce MAX_FRAMES_TO_PRELOAD\n");
             return nvStatus;
         }
-        if (isYuv444 == 0)
-            m_stEncodeBuffer[i].stInputBfr.bufferFmt = NV_ENC_BUFFER_FORMAT_NV12_PL;
-        else
-            m_stEncodeBuffer[i].stInputBfr.bufferFmt = NV_ENC_BUFFER_FORMAT_YUV444_PL;
+        m_stEncodeBuffer[i].stInputBfr.bufferFmt = inputFormat;
         m_stEncodeBuffer[i].stInputBfr.dwWidth = uInputWidth;
         m_stEncodeBuffer[i].stInputBfr.dwHeight = uInputHeight;
         nvStatus = m_pNvHWEncoder->NvEncCreateBitstreamBuffer(BITSTREAM_BUFFER_SIZE, &m_stEncodeBuffer[i].stOutputBfr.hBitstreamBuffer);
@@ -314,25 +371,28 @@ NVENCSTATUS CNvEncoderPerf::AllocateIOBuffers(uint32_t uInputWidth, uint32_t uIn
         }
         m_stEncodeBuffer[i].stOutputBfr.dwBitstreamBufferSize = BITSTREAM_BUFFER_SIZE;
 
-#if defined (NV_WINDOWS)
-        nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        if (nvStatus != NV_ENC_SUCCESS)
-            return nvStatus;
-        m_stEncodeBuffer[i].stOutputBfr.bWaitOnEvent = true;
-#else
-        m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {   
+            nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            if (nvStatus != NV_ENC_SUCCESS)
+                return nvStatus;
+            m_stEncodeBuffer[i].stOutputBfr.bWaitOnEvent = true;
+        }
+        else
+            m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
     }
 
     m_stEOSOutputBfr.bEOSFlag = TRUE;
 
-#if defined (NV_WINDOWS)
-    nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEOSOutputBfr.hOutputEvent);
-    if (nvStatus != NV_ENC_SUCCESS)
-        return nvStatus; 
-#else
-    m_stEOSOutputBfr.hOutputEvent = NULL;
-#endif
+    if (m_stEncoderInput.enableAsyncMode)
+    {   
+        nvStatus = m_pNvHWEncoder->NvEncRegisterAsyncEvent(&m_stEOSOutputBfr.hOutputEvent);
+        if (nvStatus != NV_ENC_SUCCESS)
+            return nvStatus; 
+    }   
+    else
+        m_stEOSOutputBfr.hOutputEvent = NULL;
+
 
     return NV_ENC_SUCCESS;
 }
@@ -347,20 +407,23 @@ NVENCSTATUS CNvEncoderPerf::ReleaseIOBuffers()
         m_pNvHWEncoder->NvEncDestroyBitstreamBuffer(m_stEncodeBuffer[i].stOutputBfr.hBitstreamBuffer);
         m_stEncodeBuffer[i].stOutputBfr.hBitstreamBuffer = NULL;
 
-#if defined(NV_WINDOWS)
-        m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        nvCloseFile(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
-        m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {   
+            m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            nvCloseFile(m_stEncodeBuffer[i].stOutputBfr.hOutputEvent);
+            m_stEncodeBuffer[i].stOutputBfr.hOutputEvent = NULL;
+        }   
+
     }
 
     if (m_stEOSOutputBfr.hOutputEvent)
     {
-#if defined(NV_WINDOWS)
-        m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEOSOutputBfr.hOutputEvent);
-        nvCloseFile(m_stEOSOutputBfr.hOutputEvent);
-        m_stEOSOutputBfr.hOutputEvent = NULL;
-#endif
+        if (m_stEncoderInput.enableAsyncMode)
+        {
+            m_pNvHWEncoder->NvEncUnregisterAsyncEvent(m_stEOSOutputBfr.hOutputEvent);
+            nvCloseFile(m_stEOSOutputBfr.hOutputEvent);
+            m_stEOSOutputBfr.hOutputEvent = NULL;
+        }   
     }
 
     return NV_ENC_SUCCESS;
@@ -383,10 +446,13 @@ NVENCSTATUS CNvEncoderPerf::FlushEncoder()
     }
 
 #if defined(NV_WINDOWS)
-    if (WaitForSingleObject(m_stEOSOutputBfr.hOutputEvent, 500) != WAIT_OBJECT_0)
-    {
-        assert(0);
-        nvStatus = NV_ENC_ERR_GENERIC;
+    if (m_stEncoderInput.enableAsyncMode)
+    {   
+        if (WaitForSingleObject(m_stEOSOutputBfr.hOutputEvent, 500) != WAIT_OBJECT_0)
+        {
+            assert(0);
+            nvStatus = NV_ENC_ERR_GENERIC;
+        }
     }
 #endif
 
@@ -440,30 +506,43 @@ NVENCSTATUS CNvEncoderPerf::Deinitialize(uint32_t devicetype)
     return nvStatus;
 }
 
-NVENCSTATUS loadframe(uint8_t *yuvInput[3], HANDLE hInputYUVFile, uint32_t frmIdx, uint32_t width, uint32_t height, uint32_t &numBytesRead, uint32_t isYuv444)
+NVENCSTATUS loadframe(uint8_t *yuvInput[3], HANDLE hInputYUVFile, uint32_t frmIdx, uint32_t width, uint32_t height, uint32_t &numBytesRead, NV_ENC_BUFFER_FORMAT inputFormat)
 {
     uint64_t fileOffset;
     uint32_t result;
     //Set size depending on whether it is YUV 444 or YUV 420
-    uint32_t dwInFrameSize = isYuv444 ? width * height * 3 : width*height + (width*height) / 2;
+    uint32_t dwInFrameSize = 0;
+    int anFrameSize[3] = {};
+    switch (inputFormat) {
+    default:
+    case NV_ENC_BUFFER_FORMAT_NV12: 
+        dwInFrameSize = width * height * 3 / 2; 
+        anFrameSize[0] = width * height;
+        anFrameSize[1] = anFrameSize[2] = width * height / 4;
+        break;
+    case NV_ENC_BUFFER_FORMAT_YUV444:
+        dwInFrameSize = width * height * 3;
+        anFrameSize[0] = anFrameSize[1] = anFrameSize[2] = width * height;
+        break;
+    case NV_ENC_BUFFER_FORMAT_YUV420_10BIT:
+        dwInFrameSize = width * height * 3;
+        anFrameSize[0] = width * height * 2;
+        anFrameSize[1] = anFrameSize[2] = width * height / 2;
+        break;
+    case NV_ENC_BUFFER_FORMAT_YUV444_10BIT:
+        dwInFrameSize = width * height * 6;
+        anFrameSize[0] = anFrameSize[1] = anFrameSize[2] = width * height * 2;
+        break;
+    }
     fileOffset = (uint64_t)dwInFrameSize * frmIdx;
     result = nvSetFilePointer64(hInputYUVFile, fileOffset, NULL, FILE_BEGIN);
     if (result == INVALID_SET_FILE_POINTER)
     {
         return NV_ENC_ERR_INVALID_PARAM;
     }
-    if (isYuv444)
-    {
-        nvReadFile(hInputYUVFile, yuvInput[0], width * height, &numBytesRead, NULL);
-        nvReadFile(hInputYUVFile, yuvInput[1], width * height, &numBytesRead, NULL);
-        nvReadFile(hInputYUVFile, yuvInput[2], width * height, &numBytesRead, NULL);
-    }
-    else
-    {
-        nvReadFile(hInputYUVFile, yuvInput[0], width * height, &numBytesRead, NULL);
-        nvReadFile(hInputYUVFile, yuvInput[1], width * height / 4, &numBytesRead, NULL);
-        nvReadFile(hInputYUVFile, yuvInput[2], width * height / 4, &numBytesRead, NULL);
-    }
+    nvReadFile(hInputYUVFile, yuvInput[0], anFrameSize[0], &numBytesRead, NULL);
+    nvReadFile(hInputYUVFile, yuvInput[1], anFrameSize[1], &numBytesRead, NULL);
+    nvReadFile(hInputYUVFile, yuvInput[2], anFrameSize[2], &numBytesRead, NULL);
     return NV_ENC_SUCCESS;
 }
 
@@ -509,9 +588,12 @@ void PrintHelp()
         "                                 2:  Cuda\n"
         "                                 3:  DX10\n"
         "-deviceID <integer>          Specify the GPU device on which encoding will take place\n"
-        "-yuv444 <integer>            Specify the input YUV format\n"
+        "-inputFormat <integer>       Specify the input format\n"
         "                                 0: YUV 420\n"
         "                                 1: YUV 444\n"
+        "                                 2: YUV 420 10-bit\n"
+        "                                 3: YUV 444 10-bit\n"
+        "-temporalAQ                      1: Enable TemporalAQ\n"
         "-help                        Prints Help Information\n\n"
         );
 }
@@ -547,6 +629,7 @@ int CNvEncoderPerf::EncodeMain(int argc, char *argv[])
     encodeConfig.b_quant_offset = DEFAULT_B_QOFFSET; 
     encodeConfig.presetGUID = NV_ENC_PRESET_DEFAULT_GUID;
     encodeConfig.pictureStruct = NV_ENC_PIC_STRUCT_FRAME;
+	encodeConfig.inputFormat = NV_ENC_BUFFER_FORMAT_NV12;
 
     nvStatus = m_pNvHWEncoder->ParseArguments(&encodeConfig, argc, argv);
     if (nvStatus != NV_ENC_SUCCESS)
@@ -642,17 +725,19 @@ int CNvEncoderPerf::EncodeMain(int argc, char *argv[])
     nvStatus = m_pNvHWEncoder->CreateEncoder(&encodeConfig);
     if (nvStatus != NV_ENC_SUCCESS)
         return 1;
+    
+    m_stEncoderInput.enableAsyncMode = encodeConfig.enableAsyncMode;
 
     m_uEncodeBufferCount = MAX_FRAMES_TO_PRELOAD;
 
-    nvStatus = AllocateIOBuffers(encodeConfig.width, encodeConfig.height, encodeConfig.isYuv444);
+    nvStatus = AllocateIOBuffers(encodeConfig.width, encodeConfig.height, encodeConfig.inputFormat);
     if (nvStatus != NV_ENC_SUCCESS)
     {
         bError = true;
         goto exit;
     }
-    chromaFormatIDC = (encodeConfig.isYuv444 ? 3 : 1);
-    lumaPlaneSize = encodeConfig.width * encodeConfig.height;
+    chromaFormatIDC = encodeConfig.inputFormat == NV_ENC_BUFFER_FORMAT_YUV444 || encodeConfig.inputFormat == NV_ENC_BUFFER_FORMAT_YUV444_10BIT ? 3 : 1;
+    lumaPlaneSize = encodeConfig.width * encodeConfig.height * (encodeConfig.inputFormat == NV_ENC_BUFFER_FORMAT_YUV420_10BIT || encodeConfig.inputFormat == NV_ENC_BUFFER_FORMAT_YUV444_10BIT ? 2 : 1);
     chromaPlaneSize = (chromaFormatIDC == 3) ? lumaPlaneSize : (lumaPlaneSize >> 2);
 
     yuv[0] = new uint8_t[lumaPlaneSize];
@@ -667,11 +752,22 @@ int CNvEncoderPerf::EncodeMain(int argc, char *argv[])
         for (int frmCnt = frm; frmCnt <= MIN(frm + MAX_FRAMES_TO_PRELOAD - 1, encodeConfig.endFrameIdx); frmCnt++)
         {
             numBytesRead = 0;
-            loadframe(yuv, hInput, frmCnt, encodeConfig.width, encodeConfig.height, numBytesRead, encodeConfig.isYuv444);
-            if (encodeConfig.isYuv444 == 0)
+            loadframe(yuv, hInput, frmCnt, encodeConfig.width, encodeConfig.height, numBytesRead, encodeConfig.inputFormat);
+            switch (encodeConfig.inputFormat) {
+            default:
+            case NV_ENC_BUFFER_FORMAT_NV12:
                 ConvertYUVpitchToNV12(yuv[0], yuv[1], yuv[2], encodeConfig.width, encodeConfig.height, (frmCnt - frm));
-            else
+                break;
+            case NV_ENC_BUFFER_FORMAT_YUV444:
                 ConvertYUVpitchToYUV444(yuv[0], yuv[1], yuv[2], encodeConfig.width, encodeConfig.height, (frmCnt - frm));
+                break;
+            case NV_ENC_BUFFER_FORMAT_YUV420_10BIT:
+                ConvertYUV10pitchtoP010PL((unsigned short *)yuv[0], (unsigned short *)yuv[1], (unsigned short *)yuv[2], encodeConfig.width, encodeConfig.height, (frmCnt - frm));
+                break;
+            case NV_ENC_BUFFER_FORMAT_YUV444_10BIT:
+                ConvertYUV10pitchtoYUV444((unsigned short *)yuv[0], (unsigned short *)yuv[1], (unsigned short *)yuv[2], encodeConfig.width, encodeConfig.height, (frmCnt - frm));
+                break;
+            }
 
             if (numBytesRead == 0)
             {

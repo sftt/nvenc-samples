@@ -128,13 +128,14 @@ protected:
     NVENCSTATUS                                          InitD3D11(uint32_t deviceID = 0);
     NVENCSTATUS                                          InitD3D10(uint32_t deviceID = 0);
     NVENCSTATUS                                          InitCuda(uint32_t deviceID = 0);
-    NVENCSTATUS                                          AllocateIOBuffers(uint32_t uInputWidth, uint32_t uInputHeight,int isYuv444);
+    NVENCSTATUS                                          AllocateIOBuffers(uint32_t uInputWidth, uint32_t uInputHeight, NV_ENC_BUFFER_FORMAT inputFormat);
     NVENCSTATUS                                          ReleaseIOBuffers();
     unsigned char*                                       LockInputBuffer(void * hInputSurface, uint32_t *pLockedPitch);
     NVENCSTATUS                                          FlushEncoder();
     void                                                 ConvertYUVpitchToNV12(unsigned char *yuv_luma, unsigned char *yuv_cb, unsigned char *yuv_cr, int width, int height, int index);
     void                                                 ConvertYUVpitchToYUV444(unsigned char *yuv_luma, unsigned char *yuv_cb, unsigned char *yuv_cr, int width, int height, int index);
-
+    void                                                 ConvertYUV10pitchtoP010PL(unsigned short *yuv_luma, unsigned short *yuv_cb, unsigned short *yuv_cr, int width, int height, int index);
+    void                                                 ConvertYUV10pitchtoYUV444(unsigned short *yuv_luma, unsigned short *yuv_cb, unsigned short *yuv_cr, int width, int height, int index);
 };
 
 // NVEncodeAPI entry point

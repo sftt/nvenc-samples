@@ -96,11 +96,11 @@ VideoDecoder::VideoDecoder(const CUVIDEOFORMAT &rVideoFormat,
     oVideoDecodeCreateInfo_.DeinterlaceMode     = cudaVideoDeinterlaceMode_Adaptive;
 
     // No scaling
-    oVideoDecodeCreateInfo_.ulTargetWidth       = rVideoFormat.display_area.right - rVideoFormat.display_area.left;
-    oVideoDecodeCreateInfo_.ulTargetHeight      = rVideoFormat.display_area.bottom - rVideoFormat.display_area.top;
-    oVideoDecodeCreateInfo_.display_area.left   = 0;
-    oVideoDecodeCreateInfo_.display_area.right  = oVideoDecodeCreateInfo_.ulTargetWidth;
-    oVideoDecodeCreateInfo_.display_area.top    = 0;
+    oVideoDecodeCreateInfo_.ulTargetWidth = rVideoFormat.display_area.right - rVideoFormat.display_area.left;
+    oVideoDecodeCreateInfo_.ulTargetHeight = rVideoFormat.display_area.bottom - rVideoFormat.display_area.top;
+    oVideoDecodeCreateInfo_.display_area.left = 0;
+    oVideoDecodeCreateInfo_.display_area.right = oVideoDecodeCreateInfo_.ulTargetWidth;
+    oVideoDecodeCreateInfo_.display_area.top = 0;
     oVideoDecodeCreateInfo_.display_area.bottom = oVideoDecodeCreateInfo_.ulTargetHeight;
 
     oVideoDecodeCreateInfo_.ulNumOutputSurfaces = MAX_FRAME_COUNT;  // We won't simultaneously map more than 8 surfaces
@@ -165,37 +165,30 @@ const
     return oVideoDecodeCreateInfo_.ulTargetHeight;
 }
 
-CUresult
+void
 VideoDecoder::decodePicture(CUVIDPICPARAMS *pPictureParameters, CUcontext *pContext)
 {
     // Handle CUDA picture decode (this actually calls the hardware VP/CUDA to decode video frames)
     CUresult oResult = cuvidDecodePicture(oDecoder_, pPictureParameters);
-    // assert(CUDA_SUCCESS == oResult);
-    return oResult;
+    assert(CUDA_SUCCESS == oResult);
 }
 
-CUresult
+void
 VideoDecoder::mapFrame(int iPictureIndex, CUdeviceptr *ppDevice, unsigned int *pPitch, CUVIDPROCPARAMS *pVideoProcessingParameters)
 {
     CUresult oResult = cuvidMapVideoFrame(oDecoder_,
                                           iPictureIndex,
                                           ppDevice,
                                           pPitch, pVideoProcessingParameters);
-    if (ppDevice == NULL)
-    {
-        return CUDA_ERROR_INVALID_VALUE;
-    }
-    if (*pPitch == 0)
-    {
-        return CUDA_ERROR_INVALID_VALUE;
-    }
-    return oResult;
+    assert(CUDA_SUCCESS == oResult);
+    assert(0 != *ppDevice);
+    assert(0 != *pPitch);
 }
 
-CUresult
+void
 VideoDecoder::unmapFrame(CUdeviceptr pDevice)
 {
     CUresult oResult = cuvidUnmapVideoFrame(oDecoder_, pDevice);
-    return oResult;
+    assert(CUDA_SUCCESS == oResult);
 }
 

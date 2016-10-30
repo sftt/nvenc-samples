@@ -59,7 +59,7 @@ class ImageGL
 
         ImageGL(unsigned int nDispWidth, unsigned int nDispHeight,
                 unsigned int nTexWidth,  unsigned int nTexHeight,
-                bool bIsProgressive,
+                bool bVsync,  
                 PixelFormat ePixelFormat = BGRA_PIXEL_FORMAT);
 
         // Destructor
@@ -156,8 +156,8 @@ class ImageGL
         }
 
     private:
-        GLuint gl_pbo_[2];     // OpenGL pixel buffer object
-        GLuint gl_texid_[2];   // Texture resource for rendering
+        GLuint gl_pbo_[3];     // OpenGL pixel buffer object
+        GLuint gl_texid_[3];   // Texture resource for rendering
         GLuint gl_shader_;
 
         unsigned int nWidth_;
@@ -165,7 +165,7 @@ class ImageGL
         unsigned int nTexWidth_;
         unsigned int nTexHeight_;
         PixelFormat e_PixFmt_;
-        bool bIsProgressive_;
+        bool bVsync_;
         bool bIsCudaResource_;
 
         CUcontext oContext_;

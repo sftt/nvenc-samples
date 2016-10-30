@@ -13,9 +13,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvEncoderPerf", "NvEncoderP
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvTranscoder", "NvTranscoder\NvTranscoder_2010.vcxproj", "{B014B2FC-8061-486A-83CC-87A89CFDB460}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NVDecodeD3D9", "NVDecodeD3D9\NVDecodeD3D9_2010.vcxproj", "{EAB14BE9-69C4-6DF1-81C2-2A90F19CC73F}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvDecodeD3D9", "NVDecodeD3D9\NVDecodeD3D9_2010.vcxproj", "{EAB14BE9-69C4-6DF1-81C2-2A90F19CC73F}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NVDecodeGL", "NVDecodeGL\NVDecodeGL_2010.vcxproj", "{5D74260A-B080-8ACC-D732-0198382069B7}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvDecodeD3D11", "NvDecodeD3D11\NvDecodeD3D11_2010.vcxproj", "{FF187773-7669-4F38-98E7-588D2274115A}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvDecodeGL", "NVDecodeGL\NVDecodeGL_2010.vcxproj", "{5D74260A-B080-8ACC-D732-0198382069B7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -89,6 +91,14 @@ Global
 		{5D74260A-B080-8ACC-D732-0198382069B7}.Release|Win32.Build.0 = Release|Win32
 		{5D74260A-B080-8ACC-D732-0198382069B7}.Release|x64.ActiveCfg = Release|x64
 		{5D74260A-B080-8ACC-D732-0198382069B7}.Release|x64.Build.0 = Release|x64
+		{FF187773-7669-4F38-98E7-588D2274115A}.Debug|Win32.ActiveCfg = Debug|Win32
+		{FF187773-7669-4F38-98E7-588D2274115A}.Debug|Win32.Build.0 = Debug|Win32
+		{FF187773-7669-4F38-98E7-588D2274115A}.Debug|x64.ActiveCfg = Debug|x64
+		{FF187773-7669-4F38-98E7-588D2274115A}.Debug|x64.Build.0 = Debug|x64
+		{FF187773-7669-4F38-98E7-588D2274115A}.Release|Win32.ActiveCfg = Release|Win32
+		{FF187773-7669-4F38-98E7-588D2274115A}.Release|Win32.Build.0 = Release|Win32
+		{FF187773-7669-4F38-98E7-588D2274115A}.Release|x64.ActiveCfg = Release|x64
+		{FF187773-7669-4F38-98E7-588D2274115A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
